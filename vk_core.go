@@ -48,6 +48,7 @@ type Core struct {
 	renderFinishedSems []vk.Semaphore
 	inFlightFens       []vk.Fence
 
+	// Data transfer
 	vertices        []vm.Vertex
 	vertexBuffer    vk.Buffer
 	vertexBufferMem vk.DeviceMemory
@@ -77,7 +78,7 @@ func (c *Core) initialize() {
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
-	c.createVertexBuffer()
+	c.createAndFillVertexBuffer()
 	c.createCommandBuffers()
 	c.createSyncObjects()
 }
@@ -791,23 +792,82 @@ func (c *Core) createBuffer(size vk.DeviceSize, usage vk.BufferUsageFlags, memPr
 	return buf, deviceMem
 }
 
-func (c *Core) createVertexBuffer() {
-	// Buffer handle of fitting size
+func (c *Core) createAndFillVertexBuffer() {
+	// Create staging buffer
 	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices))
-	c.vertexBuffer, c.vertexBufferMem = c.createBuffer(
+	stagingBuffer, stagingBufferMem := c.createBuffer(
 		bufSize,
-		vk.BufferUsageFlags(vk.BufferUsageVertexBufferBit),
+		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
 	)
 
-	// Map the memory - copy our vertex data over - unmap it again
+	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(c.device, c.vertexBufferMem, 0, bufSize, 0, &pData))
+	err := vk.Error(vk.MapMemory(c.device, stagingBufferMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, rawBytes(c.vertices))
-	vk.UnmapMemory(c.device, c.vertexBufferMem)
+	vk.UnmapMemory(c.device, stagingBufferMem)
+
+	// Create vertex buffer
+	c.vertexBuffer, c.vertexBufferMem = c.createBuffer(
+		bufSize,
+		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
+	)
+
+	// Move memory to vertex buffer & delete staging buffer afterwards
+	c.copyBuffer(stagingBuffer, c.vertexBuffer, bufSize)
+	vk.DestroyBuffer(c.device, stagingBuffer, nil)
+	vk.FreeMemory(c.device, stagingBufferMem, nil)
+}
+
+// copyBuffer is a subroutine that prepares a command buffer that is then executed on the device.
+// The command buffer is allocated, records the copy command and is submitted to the device. After idle
+// the command buffer is freed.
+func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
+	allocInfo := vk.CommandBufferAllocateInfo{
+		SType:              vk.StructureTypeCommandBufferAllocateInfo,
+		PNext:              nil,
+		CommandPool:        c.commandPool,
+		Level:              vk.CommandBufferLevelPrimary,
+		CommandBufferCount: 1,
+	}
+	cmdBuffers := make([]vk.CommandBuffer, 1)
+	vk.AllocateCommandBuffers(c.device, &allocInfo, cmdBuffers)
+
+	beginInfo := vk.CommandBufferBeginInfo{
+		SType:            vk.StructureTypeCommandBufferBeginInfo,
+		PNext:            nil,
+		Flags:            vk.CommandBufferUsageFlags(vk.CommandBufferUsageOneTimeSubmitBit),
+		PInheritanceInfo: nil,
+	}
+	vk.BeginCommandBuffer(cmdBuffers[0], &beginInfo)
+	copyRegions := []vk.BufferCopy{
+		{
+			SrcOffset: 0,
+			DstOffset: 0,
+			Size:      s,
+		},
+	}
+	vk.CmdCopyBuffer(cmdBuffers[0], src, dst, 1, copyRegions)
+	vk.EndCommandBuffer(cmdBuffers[0])
+
+	submitInfo := vk.SubmitInfo{
+		SType:                vk.StructureTypeSubmitInfo,
+		PNext:                nil,
+		WaitSemaphoreCount:   0,
+		PWaitSemaphores:      nil,
+		PWaitDstStageMask:    nil,
+		CommandBufferCount:   1,
+		PCommandBuffers:      cmdBuffers,
+		SignalSemaphoreCount: 0,
+		PSignalSemaphores:    nil,
+	}
+	vk.QueueSubmit(c.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
+	vk.QueueWaitIdle(c.graphicsQ)
+	vk.FreeCommandBuffers(c.device, c.commandPool, 1, cmdBuffers)
 }
 
 func (c *Core) findMemoryType(typeFilter uint32, propFlags vk.MemoryPropertyFlags) uint32 {
