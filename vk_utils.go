@@ -169,6 +169,13 @@ func readDeviceMemoryProperties(pd vk.PhysicalDevice) vk.PhysicalDeviceMemoryPro
 	return pdMemProps
 }
 
+func readBufferMemoryRequirements(device vk.Device, b vk.Buffer) vk.MemoryRequirements {
+	var memRequirements vk.MemoryRequirements
+	vk.GetBufferMemoryRequirements(device, b, &memRequirements)
+	memRequirements.Deref()
+	return memRequirements
+}
+
 // Support and availability checks
 func checkInstanceExtensionSupport(requiredInstanceExt []string) {
 	supportedExt := readInstanceExtensionProperties()

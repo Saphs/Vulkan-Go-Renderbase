@@ -750,55 +750,59 @@ func (c *Core) createSyncObjects() {
 	c.inFlightFens = iff
 }
 
-func (c *Core) createVertexBuffer() {
-	gfxFam := []uint32{*c.qFamilies.graphicsFamily}
+func (c *Core) createBuffer(size vk.DeviceSize, usage vk.BufferUsageFlags, memProperties vk.MemoryPropertyFlags) (vk.Buffer, vk.DeviceMemory) {
 	// Buffer handle of fitting size
-	vSize := int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices)
 	bufferInfo := vk.BufferCreateInfo{
 		SType:                 vk.StructureTypeBufferCreateInfo,
 		PNext:                 nil,
 		Flags:                 0,
-		Size:                  vk.DeviceSize(vSize),
-		Usage:                 vk.BufferUsageFlags(vk.BufferUsageVertexBufferBit),
+		Size:                  size,
+		Usage:                 usage,
 		SharingMode:           vk.SharingModeExclusive,
-		QueueFamilyIndexCount: 1,
-		PQueueFamilyIndices:   gfxFam,
+		QueueFamilyIndexCount: 0,
+		PQueueFamilyIndices:   nil,
 	}
 	var buf vk.Buffer
 	err := vk.Error(vk.CreateBuffer(c.device, &bufferInfo, nil, &buf))
 	if err != nil {
 		log.Panicf("Failed to create vertex buffer")
 	}
-	c.vertexBuffer = buf
+	bufRequirements := readBufferMemoryRequirements(c.device, buf)
 
-	// Ask for memory with fitting type and properties & alloc
-	var memRequirements vk.MemoryRequirements
-	vk.GetBufferMemoryRequirements(c.device, c.vertexBuffer, &memRequirements)
-	memRequirements.Deref()
-	log.Print(toStringMemoryRequirements(memRequirements))
-	requiredProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
+	// Allocate device memory
 	allocInfo := vk.MemoryAllocateInfo{
 		SType:           vk.StructureTypeMemoryAllocateInfo,
 		PNext:           nil,
-		AllocationSize:  memRequirements.Size,
-		MemoryTypeIndex: c.findMemoryType(memRequirements.MemoryTypeBits, requiredProps),
+		AllocationSize:  bufRequirements.Size,
+		MemoryTypeIndex: c.findMemoryType(bufRequirements.MemoryTypeBits, memProperties),
 	}
 	var deviceMem vk.DeviceMemory
 	err = vk.Error(vk.AllocateMemory(c.device, &allocInfo, nil, &deviceMem))
 	if err != nil {
 		log.Panicf("Failed to allocate vertex buffer memory")
 	}
-	c.vertexBufferMem = deviceMem
 
 	// Associate allocated memory with buffer handle
-	err = vk.Error(vk.BindBufferMemory(c.device, c.vertexBuffer, c.vertexBufferMem, 0))
+	err = vk.Error(vk.BindBufferMemory(c.device, buf, deviceMem, 0))
 	if err != nil {
 		log.Panicf("Failed to bind device memory to buffer handle")
 	}
 
-	// Map the memory - copy it over - unmap it again
+	return buf, deviceMem
+}
+
+func (c *Core) createVertexBuffer() {
+	// Buffer handle of fitting size
+	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices))
+	c.vertexBuffer, c.vertexBufferMem = c.createBuffer(
+		bufSize,
+		vk.BufferUsageFlags(vk.BufferUsageVertexBufferBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
+	)
+
+	// Map the memory - copy our vertex data over - unmap it again
 	var pData unsafe.Pointer
-	err = vk.Error(vk.MapMemory(c.device, c.vertexBufferMem, 0, bufferInfo.Size, 0, &pData))
+	err := vk.Error(vk.MapMemory(c.device, c.vertexBufferMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
