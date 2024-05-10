@@ -54,35 +54,19 @@ func (q *QueueFamilyIndices) isAllQueuesFound() bool {
 	return q.graphicsFamily != nil && q.presentFamily != nil
 }
 
-func (q *QueueFamilyIndices) graphicsFamilyIdx() (uint32, error) {
-	if q.graphicsFamily == nil {
-		return 0, errors.New("graphics family index not set, run 'findQueueFamilies' beforehand")
-	}
-	return *q.graphicsFamily, nil
-}
-
-func (q *QueueFamilyIndices) presentFamilyIdx() (uint32, error) {
-	if q.presentFamily == nil {
-		return 0, errors.New("present family index not set, run 'findQueueFamilies' beforehand")
-	}
-	return *q.presentFamily, nil
-}
-
 func (q *QueueFamilyIndices) toQueueCreateInfos() []vk.DeviceQueueCreateInfo {
 	var uniqIndices []uint32
-	graphicsIdx, err := q.graphicsFamilyIdx()
-	if err != nil {
-		log.Panicf("Failed to access graphics capable queue family index: %s", err)
+	if q.graphicsFamily == nil {
+		log.Panicf("Failed to access graphics capable queue family index")
 	}
-	if !inList(graphicsIdx, uniqIndices) {
-		uniqIndices = append(uniqIndices, graphicsIdx)
+	if !inList(*q.graphicsFamily, uniqIndices) {
+		uniqIndices = append(uniqIndices, *q.graphicsFamily)
 	}
-	presentIdx, err := q.presentFamilyIdx()
-	if err != nil {
-		log.Panicf("Failed to access present capable queue family index: %s", err)
+	if q.presentFamily == nil {
+		log.Panicf("Failed to access present capable queue family index")
 	}
-	if !inList(presentIdx, uniqIndices) {
-		uniqIndices = append(uniqIndices, presentIdx)
+	if !inList(*q.presentFamily, uniqIndices) {
+		uniqIndices = append(uniqIndices, *q.presentFamily)
 	}
 	infos := make([]vk.DeviceQueueCreateInfo, len(uniqIndices))
 	for i := range uniqIndices {

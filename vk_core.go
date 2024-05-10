@@ -21,11 +21,12 @@ type Core struct {
 	surface      vk.Surface
 
 	// Device level
-	pd        vk.PhysicalDevice
-	device    vk.Device
-	qFamilies QueueFamilyIndices
-	graphicsQ vk.Queue
-	presentQ  vk.Queue
+	pd            vk.PhysicalDevice
+	pdMemoryProps vk.PhysicalDeviceMemoryProperties
+	device        vk.Device
+	qFamilies     QueueFamilyIndices
+	graphicsQ     vk.Queue
+	presentQ      vk.Queue
 
 	// Window-Device interoperability
 	swapChain vk.Swapchain
@@ -52,17 +53,21 @@ type Core struct {
 	vertices        []vm.Vertex
 	vertexBuffer    vk.Buffer
 	vertexBufferMem vk.DeviceMemory
+	vertIndices     []uint32
+	indexBuffer     vk.Buffer
+	indexBufferMem  vk.DeviceMemory
 }
 
 // Externally facing functions
 
-func NewRenderCore(vertices []vm.Vertex) *Core {
+func NewRenderCore(vertices []vm.Vertex, vertIndices []uint32) *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
 		win: w,
 	}
 	c.vertices = vertices
+	c.vertIndices = vertIndices
 	c.initialize()
 	return c
 }
@@ -78,7 +83,8 @@ func (c *Core) initialize() {
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
-	c.createAndFillVertexBuffer()
+	c.createVertexBuffer()
+	c.createIndexBuffer()
 	c.createCommandBuffers()
 	c.createSyncObjects()
 }
@@ -125,6 +131,9 @@ func (c *Core) destroy() {
 
 	vk.DestroyBuffer(c.device, c.vertexBuffer, nil)
 	vk.FreeMemory(c.device, c.vertexBufferMem, nil)
+	vk.DestroyBuffer(c.device, c.indexBuffer, nil)
+	vk.FreeMemory(c.device, c.indexBufferMem, nil)
+
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
 		vk.DestroySemaphore(c.device, c.imageAvailableSems[i], nil)
 		vk.DestroySemaphore(c.device, c.renderFinishedSems[i], nil)
@@ -200,7 +209,6 @@ func (c *Core) createInstance() {
 		log.Printf("Validation enabled, checking layer support")
 		checkValidationLayerSupport(VALIDATION_LAYERS)
 	}
-	var instance vk.Instance
 	applicationInfo := &vk.ApplicationInfo{
 		SType:              vk.StructureTypeApplicationInfo,
 		PNext:              nil,
@@ -224,23 +232,19 @@ func (c *Core) createInstance() {
 		createInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
 		createInfo.PpEnabledLayerNames = terminatedStrs(VALIDATION_LAYERS)
 	}
-	creationResult := vk.CreateInstance(createInfo, nil, &instance)
-	if creationResult != vk.Success {
-		log.Panicf("Failed to create vk instance, result: %v", creationResult)
-	}
-	err := vk.InitInstance(instance)
+	ins, err := VkCreateInstance(createInfo, nil)
 	if err != nil {
-		log.Panicf("Failed to init instance with %s", err)
+		log.Panicf("Failed to create vk instance, due to: %v", err)
 	}
-	c.instance = instance
+	c.instance = ins
 }
 
 func (c *Core) createSurface() {
-	surfPtr, err := c.win.VulkanCreateSurface(c.instance)
+	surf, err := sdlCreateVkSurface(c.win, c.instance)
 	if err != nil {
-		log.Panicf("Failed to create SDL window Vulkan surface due to: %s", err)
+		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
 	}
-	c.surface = vk.SurfaceFromPointer(uintptr(surfPtr))
+	c.surface = surf
 }
 
 func (c *Core) selectPhysicalDevice() {
@@ -254,17 +258,17 @@ func (c *Core) selectPhysicalDevice() {
 	}
 	if pd == nil {
 		log.Panicf("No suitable physical device (GPU) found")
-	} else {
-		log.Printf("Found suitable device")
 	}
+	log.Printf("Found suitable device")
 	c.pd = pd
 
-	// Also set the member variable c.qFamilies from c.pd as it is needed later
+	// Also set related member variables for c.pd as they are needed later
 	qf, err := findQueueFamilies(c.pd, c.surface)
 	if err != nil {
 		log.Panicf("Failed to read queue families from selected device due to: %s", err)
 	}
 	c.qFamilies = *qf
+	c.pdMemoryProps = readDeviceMemoryProperties(c.pd)
 }
 
 func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
@@ -312,29 +316,20 @@ func (c *Core) createLogicalDevice() {
 		deviceCreatInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
 		deviceCreatInfo.PpEnabledLayerNames = terminatedStrs(VALIDATION_LAYERS)
 	}
-	var d vk.Device
-	if vk.CreateDevice(c.pd, deviceCreatInfo, nil, &d) != vk.Success {
+
+	var err error
+	c.device, err = VkCreateDevice(c.pd, deviceCreatInfo, nil)
+	if err != nil {
 		log.Panicf("Failed create logical device due to: %s", "err")
 	}
-	c.device = d
-
-	var gq vk.Queue
-	gfIndex, err := c.qFamilies.graphicsFamilyIdx()
+	c.graphicsQ, err = VkGetDeviceQueue(c.device, c.qFamilies.graphicsFamily, 0)
 	if err != nil {
-		log.Panicf("Failed to access graphics capable queue family index: %s", err)
+		log.Panicf("Failed to get 'graphics' device queue: %s", err)
 	}
-	vk.GetDeviceQueue(c.device, gfIndex, 0, &gq)
-	log.Printf("Retrived graphics queue handle: %v", gq)
-	c.graphicsQ = gq
-
-	var pq vk.Queue
-	presentIndex, err := c.qFamilies.presentFamilyIdx()
+	c.presentQ, err = VkGetDeviceQueue(c.device, c.qFamilies.presentFamily, 0)
 	if err != nil {
-		log.Panicf("Failed to access graphics capable queue family index: %s", err)
+		log.Panicf("Failed to get 'present' device queue: %s", err)
 	}
-	vk.GetDeviceQueue(c.device, presentIndex, 0, &pq)
-	log.Printf("Retrived present queue handle: %v", pq)
-	c.presentQ = pq
 }
 
 func (c *Core) createSwapChain() {
@@ -385,18 +380,19 @@ func (c *Core) createSwapChain() {
 		OldSwapchain:          nil,
 	}
 
-	var sc vk.Swapchain
-	if vk.CreateSwapchain(c.device, createInfo, nil, &sc) != vk.Success {
+	var err error
+	c.swapChain, err = VkCreateSwapChain(c.device, createInfo, nil)
+	if err != nil {
 		log.Panicf("Failed create swapchain due to: %s", "err")
 	}
 	log.Println("Successfully created swap chain")
-	c.swapChain = sc
+
 	c.scImages = readSwapChainImages(c.device, c.swapChain)
 	log.Printf("Read resulting image handles: %v", c.scImages)
 }
 
 func (c *Core) createImageViews() {
-	imgViews := make([]vk.ImageView, len(c.scImages))
+	c.imgViews = make([]vk.ImageView, len(c.scImages))
 	for i := range c.scImages {
 		createInfo := &vk.ImageViewCreateInfo{
 			SType:    vk.StructureTypeImageViewCreateInfo,
@@ -419,12 +415,13 @@ func (c *Core) createImageViews() {
 				LayerCount:     1,
 			},
 		}
-		if vk.CreateImageView(c.device, createInfo, nil, &imgViews[i]) != vk.Success {
+		var err error
+		c.imgViews[i], err = VkCreateImageView(c.device, createInfo, nil)
+		if err != nil {
 			log.Panicf("Failed create image view %d due to: %s", i, "err")
 		}
 	}
-	c.imgViews = imgViews
-	log.Printf("Successfully created %d image views", len(c.imgViews))
+	log.Printf("Successfully created %d image views %v", len(c.imgViews), c.imgViews)
 }
 
 func (c *Core) createRenderPass() {
@@ -439,7 +436,6 @@ func (c *Core) createRenderPass() {
 		InitialLayout:  vk.ImageLayoutUndefined,
 		FinalLayout:    vk.ImageLayoutPresentSrc,
 	}
-
 	colorAttachmentRef := vk.AttachmentReference{
 		Attachment: 0,
 		Layout:     vk.ImageLayoutColorAttachmentOptimal,
@@ -456,7 +452,6 @@ func (c *Core) createRenderPass() {
 		PreserveAttachmentCount: 0,
 		PPreserveAttachments:    nil,
 	}
-
 	dependency := vk.SubpassDependency{
 		SrcSubpass:      vk.SubpassExternal,
 		DstSubpass:      0,
@@ -466,7 +461,6 @@ func (c *Core) createRenderPass() {
 		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentWriteBit),
 		DependencyFlags: 0,
 	}
-
 	renderPassInfo := vk.RenderPassCreateInfo{
 		SType:           vk.StructureTypeRenderPassCreateInfo,
 		PNext:           nil,
@@ -478,12 +472,12 @@ func (c *Core) createRenderPass() {
 		DependencyCount: 1,
 		PDependencies:   []vk.SubpassDependency{dependency},
 	}
-	var renderPass vk.RenderPass
-	if vk.CreateRenderPass(c.device, &renderPassInfo, nil, &renderPass) != vk.Success {
+	var err error
+	c.renderPass, err = VkCreateRenderPass(c.device, &renderPassInfo, nil)
+	if err != nil {
 		log.Panicf("Failed create render pass due to: %s", "err")
 	}
 	log.Println("Successfully created render pass")
-	c.renderPass = renderPass
 }
 
 func (c *Core) createGraphicsPipeline() {
@@ -674,23 +668,24 @@ func (c *Core) createGraphicsPipeline() {
 func (c *Core) createFrameBuffers() {
 	c.scFrameBuffers = make([]vk.Framebuffer, len(c.imgViews))
 	for i := range c.imgViews {
-		attachments := []vk.ImageView{c.imgViews[i]}
 		framebufferInfo := vk.FramebufferCreateInfo{
 			SType:           vk.StructureTypeFramebufferCreateInfo,
 			PNext:           nil,
 			Flags:           0,
 			RenderPass:      c.renderPass,
 			AttachmentCount: 1,
-			PAttachments:    attachments,
+			PAttachments:    []vk.ImageView{c.imgViews[i]},
 			Width:           c.scExtend.Width,
 			Height:          c.scExtend.Height,
 			Layers:          1,
 		}
-		if vk.CreateFramebuffer(c.device, &framebufferInfo, nil, &c.scFrameBuffers[i]) != vk.Success {
+		var err error
+		c.scFrameBuffers[i], err = VkCreateFrameBuffer(c.device, &framebufferInfo, nil)
+		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
-		log.Printf("Successfully created frame buffer [%d]", i)
 	}
+	log.Printf("Successfully created %d frame buffers %v", len(c.scFrameBuffers), c.scFrameBuffers)
 }
 
 func (c *Core) createCommandPool() {
@@ -792,7 +787,7 @@ func (c *Core) createBuffer(size vk.DeviceSize, usage vk.BufferUsageFlags, memPr
 	return buf, deviceMem
 }
 
-func (c *Core) createAndFillVertexBuffer() {
+func (c *Core) createVertexBuffer() {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices))
 	stagingBuffer, stagingBufferMem := c.createBuffer(
@@ -819,6 +814,38 @@ func (c *Core) createAndFillVertexBuffer() {
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stagingBuffer, c.vertexBuffer, bufSize)
+	vk.DestroyBuffer(c.device, stagingBuffer, nil)
+	vk.FreeMemory(c.device, stagingBufferMem, nil)
+}
+
+func (c *Core) createIndexBuffer() {
+	log.Printf("Indices: %v", c.vertIndices)
+	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertIndices[0])) * len(c.vertIndices))
+	log.Printf("Buffer size: %dByte", bufSize)
+	stagingBuffer, stagingBufferMem := c.createBuffer(
+		bufSize,
+		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
+	)
+
+	// Map staging memory - copy our vertex data into staging - unmap staging again
+	var pData unsafe.Pointer
+	err := vk.Error(vk.MapMemory(c.device, stagingBufferMem, 0, bufSize, 0, &pData))
+	if err != nil {
+		log.Panicf("Failed to map device memory")
+	}
+	vk.Memcopy(pData, rawBytes(c.vertIndices))
+	vk.UnmapMemory(c.device, stagingBufferMem)
+
+	// Create vertex buffer
+	c.indexBuffer, c.indexBufferMem = c.createBuffer(
+		bufSize,
+		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageIndexBufferBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
+	)
+
+	// Move memory to vertex buffer & delete staging buffer afterwards
+	c.copyBuffer(stagingBuffer, c.indexBuffer, bufSize)
 	vk.DestroyBuffer(c.device, stagingBuffer, nil)
 	vk.FreeMemory(c.device, stagingBufferMem, nil)
 }
@@ -871,14 +898,12 @@ func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
 }
 
 func (c *Core) findMemoryType(typeFilter uint32, propFlags vk.MemoryPropertyFlags) uint32 {
-	// could be read at physical device creation
-	pdMemProps := readDeviceMemoryProperties(c.pd)
-	log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(pdMemProps))
-	for i := uint32(0); i < pdMemProps.MemoryTypeCount; i++ {
+	log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(c.pdMemoryProps))
+	for i := uint32(0); i < c.pdMemoryProps.MemoryTypeCount; i++ {
 		ofType := (typeFilter & (1 << i)) > 0
-		hasProperties := pdMemProps.MemoryTypes[i].PropertyFlags&propFlags == propFlags
+		hasProperties := c.pdMemoryProps.MemoryTypes[i].PropertyFlags&propFlags == propFlags
 		if ofType && hasProperties {
-			log.Printf("Found memory type for buffer -> %d on heap %d", i, pdMemProps.MemoryTypes[i].HeapIndex)
+			log.Printf("Found memory type for buffer -> %d on heap %d", i, c.pdMemoryProps.MemoryTypes[i].HeapIndex)
 			return i
 		}
 	}
@@ -944,8 +969,10 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	vertBuffers := []vk.Buffer{c.vertexBuffer}
 	offsets := []vk.DeviceSize{0}
 	vk.CmdBindVertexBuffers(buffer, 0, 1, vertBuffers, offsets)
+	vk.CmdBindIndexBuffer(buffer, c.indexBuffer, 0, vk.IndexTypeUint32)
 
-	vk.CmdDraw(buffer, uint32(len(c.vertices)), 1, 0, 0)
+	vk.CmdDrawIndexed(buffer, uint32(len(c.vertIndices)), 1, 0, 0, 0)
+
 	vk.CmdEndRenderPass(buffer)
 	if vk.EndCommandBuffer(buffer) != vk.Success {
 		log.Printf("Failed to record commandbuffer")
