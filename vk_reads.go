@@ -145,7 +145,7 @@ func readShaderCode(device vk.Device, shaderFile string) vk.ShaderModule {
 		PNext:    nil,
 		Flags:    0,
 		CodeSize: shaderCodeLen,
-		PCode:    sliceUint32(shaderCodeB),
+		PCode:    asUint32Arr(shaderCodeB),
 	}
 	var shaderModule vk.ShaderModule
 	if vk.CreateShaderModule(device, createInfo, nil, &shaderModule) != vk.Success {
