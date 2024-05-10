@@ -23,6 +23,7 @@ type Core struct {
 	// Device level
 	pd        vk.PhysicalDevice
 	device    vk.Device
+	qFamilies QueueFamilyIndices
 	graphicsQ vk.Queue
 	presentQ  vk.Queue
 
@@ -139,7 +140,10 @@ func (c *Core) destroy() {
 	vk.DestroySurface(c.instance, c.surface, nil)
 	vk.DestroyDevice(c.device, nil)
 	vk.DestroyInstance(c.instance, nil)
-	c.win.Destroy()
+	err := c.win.Destroy()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (c *Core) destroySwapChainAndDerivatives() {
@@ -253,6 +257,13 @@ func (c *Core) selectPhysicalDevice() {
 		log.Printf("Found suitable device")
 	}
 	c.pd = pd
+
+	// Also set the member variable c.qFamilies from c.pd as it is needed later
+	qf, err := findQueueFamilies(c.pd, c.surface)
+	if err != nil {
+		log.Panicf("Failed to read queue families from selected device due to: %s", err)
+	}
+	c.qFamilies = *qf
 }
 
 func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
@@ -282,8 +293,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
 }
 
 func (c *Core) createLogicalDevice() {
-	qFamilies, _ := findQueueFamilies(c.pd, c.surface)
-	queueInfos := qFamilies.toQueueCreateInfos()
+	queueInfos := c.qFamilies.toQueueCreateInfos()
 	deviceFeatures := vk.PhysicalDeviceFeatures{} // Empty for now as we dont need anything special at the moment
 	deviceCreatInfo := &vk.DeviceCreateInfo{
 		SType:                   vk.StructureTypeDeviceCreateInfo,
@@ -308,7 +318,7 @@ func (c *Core) createLogicalDevice() {
 	c.device = d
 
 	var gq vk.Queue
-	gfIndex, err := qFamilies.graphicsFamilyIdx()
+	gfIndex, err := c.qFamilies.graphicsFamilyIdx()
 	if err != nil {
 		log.Panicf("Failed to access graphics capable queue family index: %s", err)
 	}
@@ -317,7 +327,7 @@ func (c *Core) createLogicalDevice() {
 	c.graphicsQ = gq
 
 	var pq vk.Queue
-	presentIndex, err := qFamilies.presentFamilyIdx()
+	presentIndex, err := c.qFamilies.presentFamilyIdx()
 	if err != nil {
 		log.Panicf("Failed to access graphics capable queue family index: %s", err)
 	}
@@ -340,10 +350,7 @@ func (c *Core) createSwapChain() {
 
 	// Depending on whether our queue families are the same for graphics and presentation, we need to choose different
 	// swap chain configurations: https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
-	indices, err := findQueueFamilies(c.pd, c.surface)
-	if err != nil {
-		log.Panicf("Failed to read queue families when creating swap chain: %s", err)
-	}
+	indices := c.qFamilies
 	var sharingMode vk.SharingMode
 	var indexCount uint32
 	qFamIndices := []uint32{*indices.graphicsFamily, *indices.presentFamily}
@@ -686,15 +693,11 @@ func (c *Core) createFrameBuffers() {
 }
 
 func (c *Core) createCommandPool() {
-	indices, err := findQueueFamilies(c.pd, c.surface)
-	if err != nil {
-		log.Panicf("Failed to find queue families when creating command pool due to: %v", err)
-	}
 	poolInfo := vk.CommandPoolCreateInfo{
 		SType:            vk.StructureTypeCommandPoolCreateInfo,
 		PNext:            nil,
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
-		QueueFamilyIndex: *indices.graphicsFamily,
+		QueueFamilyIndex: *c.qFamilies.graphicsFamily,
 	}
 	var commandPool vk.CommandPool
 	if vk.CreateCommandPool(c.device, &poolInfo, nil, &commandPool) != vk.Success {
@@ -748,12 +751,7 @@ func (c *Core) createSyncObjects() {
 }
 
 func (c *Core) createVertexBuffer() {
-	// This shouldnt be re-asked again. -> move to members
-	queuFamIdx, err := findQueueFamilies(c.pd, c.surface)
-	if err != nil {
-		log.Panicf("Failed to find queue families when creating vertex buffer: %v", err)
-	}
-	gfxFam := []uint32{*queuFamIdx.graphicsFamily}
+	gfxFam := []uint32{*c.qFamilies.graphicsFamily}
 	// Buffer handle of fitting size
 	vSize := int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices)
 	bufferInfo := vk.BufferCreateInfo{
@@ -767,7 +765,7 @@ func (c *Core) createVertexBuffer() {
 		PQueueFamilyIndices:   gfxFam,
 	}
 	var buf vk.Buffer
-	err = vk.Error(vk.CreateBuffer(c.device, &bufferInfo, nil, &buf))
+	err := vk.Error(vk.CreateBuffer(c.device, &bufferInfo, nil, &buf))
 	if err != nil {
 		log.Panicf("Failed to create vertex buffer")
 	}
