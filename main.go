@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/veandco/go-sdl2/sdl"
+	vm "local/vector_math"
 	"log"
 	"os"
 	"runtime"
@@ -29,7 +30,7 @@ func init() {
 }
 
 func onIteration(event sdl.Event, c *Core) {
-	switch ev := event.(type) {
+	/*switch ev := event.(type) {
 	case *sdl.MouseMotionEvent:
 		log.Printf(
 			"[%d ms] MouseMotion\tid:%d\tx:%d\ty:%d\txrel:%d\tyrel:%d\n",
@@ -40,11 +41,28 @@ func onIteration(event sdl.Event, c *Core) {
 			ev.XRel,
 			ev.YRel,
 		)
-	}
+	}*/
 }
 
 func main() {
-	core := NewRenderCore()
+
+	// Expected size in memory -> 64 Byte with 4 Bytes of padding as we have 8 Byte words on a 64Bit machine
+	v := []vm.Vertex{ // 20 * 3 = 60 Byte
+		{ // 8 + 12 = 20 Byte
+			Pos:   vm.Vec2{X: 0, Y: -0.5},    // 8 Byte (float32 * 2, no padding)
+			Color: vm.Vec3{X: 1, Y: 1, Z: 1}, // 12 Byte (float32 * 3, no padding)
+		},
+		{
+			Pos:   vm.Vec2{X: 0.5, Y: 0.5},
+			Color: vm.Vec3{X: 0, Y: 1, Z: 0},
+		},
+		{
+			Pos:   vm.Vec2{X: -0.5, Y: 0.5},
+			Color: vm.Vec3{X: 0, Y: 0, Z: 1},
+		},
+	}
+
+	core := NewRenderCore(v)
 	core.loop(onIteration)
 	core.destroy()
 }

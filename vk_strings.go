@@ -158,6 +158,40 @@ func toStringDeviceType(dt vk.PhysicalDeviceType) string {
 	}
 }
 
+func toStringPhysicalDeviceMemProps(pdMemProps vk.PhysicalDeviceMemoryProperties) string {
+	mtBuilder := strings.Builder{}
+	mtBuilder.WriteString("\n")
+	for i := uint32(0); i < pdMemProps.MemoryTypeCount; i++ {
+		mt := pdMemProps.MemoryTypes[i]
+		mtBuilder.WriteString(fmt.Sprintf(" %d: %s\n", i, toStringMemoryType(mt)))
+	}
+	mhBuilder := strings.Builder{}
+	mhBuilder.WriteString("\n")
+	for i := uint32(0); i < pdMemProps.MemoryHeapCount; i++ {
+		mh := pdMemProps.MemoryHeaps[i]
+		mhBuilder.WriteString(fmt.Sprintf(" %d: %s\n", i, toStringMemoryHeap(mh)))
+	}
+	return fmt.Sprintf(
+		"PhysicalDeviceMemoryProperties(MemoryTypeCount: %d, MemoryTypes[%v], MemoryHeapCount: %d, MemoryHeaps[%v])",
+		pdMemProps.MemoryTypeCount,
+		mtBuilder.String(),
+		pdMemProps.MemoryHeapCount,
+		mhBuilder.String(),
+	)
+}
+
+func toStringMemoryType(mt vk.MemoryType) string {
+	return fmt.Sprintf("MemoryType(Flags:%032b, HeapIdx:%d)", mt.PropertyFlags, mt.HeapIndex)
+}
+
+func toStringMemoryHeap(mh vk.MemoryHeap) string {
+	return fmt.Sprintf("MemoryHeap(Size:%d, Flags:%d)", mh.Size, mh.Flags)
+}
+
+func toStringMemoryRequirements(mr vk.MemoryRequirements) string {
+	return fmt.Sprintf("MemoryRequirements(Size:%d Byte, Alignment:%d Byte, MemTypeBits:[%032b])", mr.Size, mr.Alignment, mr.MemoryTypeBits)
+}
+
 // QueueFamilyProperties
 func tableStringQueueFamilyProps(qFamilies []vk.QueueFamilyProperties) string {
 	builder := strings.Builder{}

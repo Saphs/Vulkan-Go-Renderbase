@@ -1,11 +1,14 @@
 package main
 
+import "C"
 import (
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
+	vm "local/vector_math"
 	"log"
 	"math"
+	"unsafe"
 )
 
 type Core struct {
@@ -43,16 +46,21 @@ type Core struct {
 	imageAvailableSems []vk.Semaphore
 	renderFinishedSems []vk.Semaphore
 	inFlightFens       []vk.Fence
+
+	vertices        []vm.Vertex
+	vertexBuffer    vk.Buffer
+	vertexBufferMem vk.DeviceMemory
 }
 
 // Externally facing functions
 
-func NewRenderCore() *Core {
+func NewRenderCore(vertices []vm.Vertex) *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
 		win: w,
 	}
+	c.vertices = vertices
 	c.initialize()
 	return c
 }
@@ -68,6 +76,7 @@ func (c *Core) initialize() {
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
+	c.createVertexBuffer()
 	c.createCommandBuffers()
 	c.createSyncObjects()
 }
@@ -112,6 +121,8 @@ func (c *Core) destroy() {
 	vk.DeviceWaitIdle(c.device)
 	c.destroySwapChainAndDerivatives()
 
+	vk.DestroyBuffer(c.device, c.vertexBuffer, nil)
+	vk.FreeMemory(c.device, c.vertexBufferMem, nil)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
 		vk.DestroySemaphore(c.device, c.imageAvailableSems[i], nil)
 		vk.DestroySemaphore(c.device, c.renderFinishedSems[i], nil)
@@ -510,16 +521,16 @@ func (c *Core) createGraphicsPipeline() {
 	}
 	log.Printf("PipelineDynamicStateCreateInfo: %v", dynamicStateCreateInfo)
 
-	// Vertex input - as we are not passing in any vertex data at the moment
-	// (hard coded in the shader), we dont add any real info here
+	bindingDesc := []vk.VertexInputBindingDescription{vm.GetVertexBindingDescription()}
+	attributeDesc := vm.GetVertexAttributeDescriptions()
 	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		PNext:                           nil,
 		Flags:                           0,
-		VertexBindingDescriptionCount:   0,
-		PVertexBindingDescriptions:      nil,
-		VertexAttributeDescriptionCount: 0,
-		PVertexAttributeDescriptions:    nil,
+		VertexBindingDescriptionCount:   1,
+		PVertexBindingDescriptions:      bindingDesc,
+		VertexAttributeDescriptionCount: uint32(len(attributeDesc)),
+		PVertexAttributeDescriptions:    attributeDesc,
 	}
 	log.Printf("PipelineVertexInputStateCreateInfo: %v", vertexInputInfo)
 
@@ -736,6 +747,83 @@ func (c *Core) createSyncObjects() {
 	c.inFlightFens = iff
 }
 
+func (c *Core) createVertexBuffer() {
+	// This shouldnt be re-asked again. -> move to members
+	queuFamIdx, err := findQueueFamilies(c.pd, c.surface)
+	if err != nil {
+		log.Panicf("Failed to find queue families when creating vertex buffer: %v", err)
+	}
+	gfxFam := []uint32{*queuFamIdx.graphicsFamily}
+	// Buffer handle of fitting size
+	vSize := int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices)
+	bufferInfo := vk.BufferCreateInfo{
+		SType:                 vk.StructureTypeBufferCreateInfo,
+		PNext:                 nil,
+		Flags:                 0,
+		Size:                  vk.DeviceSize(vSize),
+		Usage:                 vk.BufferUsageFlags(vk.BufferUsageVertexBufferBit),
+		SharingMode:           vk.SharingModeExclusive,
+		QueueFamilyIndexCount: 1,
+		PQueueFamilyIndices:   gfxFam,
+	}
+	var buf vk.Buffer
+	err = vk.Error(vk.CreateBuffer(c.device, &bufferInfo, nil, &buf))
+	if err != nil {
+		log.Panicf("Failed to create vertex buffer")
+	}
+	c.vertexBuffer = buf
+
+	// Ask for memory with fitting type and properties & alloc
+	var memRequirements vk.MemoryRequirements
+	vk.GetBufferMemoryRequirements(c.device, c.vertexBuffer, &memRequirements)
+	memRequirements.Deref()
+	log.Print(toStringMemoryRequirements(memRequirements))
+	requiredProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
+	allocInfo := vk.MemoryAllocateInfo{
+		SType:           vk.StructureTypeMemoryAllocateInfo,
+		PNext:           nil,
+		AllocationSize:  memRequirements.Size,
+		MemoryTypeIndex: c.findMemoryType(memRequirements.MemoryTypeBits, requiredProps),
+	}
+	var deviceMem vk.DeviceMemory
+	err = vk.Error(vk.AllocateMemory(c.device, &allocInfo, nil, &deviceMem))
+	if err != nil {
+		log.Panicf("Failed to allocate vertex buffer memory")
+	}
+	c.vertexBufferMem = deviceMem
+
+	// Associate allocated memory with buffer handle
+	err = vk.Error(vk.BindBufferMemory(c.device, c.vertexBuffer, c.vertexBufferMem, 0))
+	if err != nil {
+		log.Panicf("Failed to bind device memory to buffer handle")
+	}
+
+	// Map the memory - copy it over - unmap it again
+	var pData unsafe.Pointer
+	err = vk.Error(vk.MapMemory(c.device, c.vertexBufferMem, 0, bufferInfo.Size, 0, &pData))
+	if err != nil {
+		log.Panicf("Failed to map device memory")
+	}
+	vk.Memcopy(pData, rawBytes(c.vertices))
+	vk.UnmapMemory(c.device, c.vertexBufferMem)
+}
+
+func (c *Core) findMemoryType(typeFilter uint32, propFlags vk.MemoryPropertyFlags) uint32 {
+	// could be read at physical device creation
+	pdMemProps := readDeviceMemoryProperties(c.pd)
+	log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(pdMemProps))
+	for i := uint32(0); i < pdMemProps.MemoryTypeCount; i++ {
+		ofType := (typeFilter & (1 << i)) > 0
+		hasProperties := pdMemProps.MemoryTypes[i].PropertyFlags&propFlags == propFlags
+		if ofType && hasProperties {
+			log.Printf("Found memory type for buffer -> %d on heap %d", i, pdMemProps.MemoryTypes[i].HeapIndex)
+			return i
+		}
+	}
+	log.Panicf("Failed to find suitable memory type")
+	return 0
+}
+
 // Drawing and derivative functionality
 
 func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
@@ -791,7 +879,11 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	}
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
 
-	vk.CmdDraw(buffer, 3, 1, 0, 0)
+	vertBuffers := []vk.Buffer{c.vertexBuffer}
+	offsets := []vk.DeviceSize{0}
+	vk.CmdBindVertexBuffers(buffer, 0, 1, vertBuffers, offsets)
+
+	vk.CmdDraw(buffer, uint32(len(c.vertices)), 1, 0, 0)
 	vk.CmdEndRenderPass(buffer)
 	if vk.EndCommandBuffer(buffer) != vk.Success {
 		log.Printf("Failed to record commandbuffer")

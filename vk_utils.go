@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
 	vk "github.com/goki/vulkan"
 	"log"
 	"os"
@@ -153,6 +156,19 @@ func readShaderCode(device vk.Device, shaderFile string) vk.ShaderModule {
 	return shaderModule
 }
 
+func readDeviceMemoryProperties(pd vk.PhysicalDevice) vk.PhysicalDeviceMemoryProperties {
+	var pdMemProps vk.PhysicalDeviceMemoryProperties
+	vk.GetPhysicalDeviceMemoryProperties(pd, &pdMemProps)
+	pdMemProps.Deref()
+	for i := range pdMemProps.MemoryTypes {
+		pdMemProps.MemoryTypes[i].Deref()
+	}
+	for i := range pdMemProps.MemoryHeaps {
+		pdMemProps.MemoryHeaps[i].Deref()
+	}
+	return pdMemProps
+}
+
 // Support and availability checks
 func checkInstanceExtensionSupport(requiredInstanceExt []string) {
 	supportedExt := readInstanceExtensionProperties()
@@ -220,6 +236,15 @@ func allOfAinB(a []string, b []string) bool {
 		}
 	}
 	return true
+}
+
+func rawBytes(p interface{}) []byte {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, p)
+	if err != nil {
+		fmt.Println("binary.Write failed:", err)
+	}
+	return buf.Bytes()
 }
 
 func terminatedStr(s string) string {
