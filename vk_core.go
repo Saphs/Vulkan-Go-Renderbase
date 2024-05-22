@@ -8,6 +8,7 @@ import (
 	vm "local/vector_math"
 	"log"
 	"math"
+	"time"
 	"unsafe"
 )
 
@@ -35,12 +36,15 @@ type Core struct {
 	scExtend  vk.Extent2D
 
 	// Drawing infrastructure
-	imgViews       []vk.ImageView
-	renderPass     vk.RenderPass
-	pipelineLayout vk.PipelineLayout
-	pipelines      []vk.Pipeline
-	scFrameBuffers []vk.Framebuffer
-	commandPool    vk.CommandPool
+	imgViews            []vk.ImageView
+	renderPass          vk.RenderPass
+	descriptorSetLayout vk.DescriptorSetLayout
+	descriptorPool      vk.DescriptorPool
+	descriptorSets      []vk.DescriptorSet
+	pipelineLayout      vk.PipelineLayout
+	pipelines           []vk.Pipeline
+	scFrameBuffers      []vk.Framebuffer
+	commandPool         vk.CommandPool
 
 	// Draw / Frame level
 	commandBuffers     []vk.CommandBuffer
@@ -50,12 +54,16 @@ type Core struct {
 	inFlightFens       []vk.Fence
 
 	// Data transfer
-	vertices        []vm.Vertex
-	vertexBuffer    vk.Buffer
-	vertexBufferMem vk.DeviceMemory
-	vertIndices     []uint32
-	indexBuffer     vk.Buffer
-	indexBufferMem  vk.DeviceMemory
+	t0                   time.Time
+	vertices             []vm.Vertex
+	vertexBuffer         vk.Buffer
+	vertexBufferMem      vk.DeviceMemory
+	vertIndices          []uint32
+	indexBuffer          vk.Buffer
+	indexBufferMem       vk.DeviceMemory
+	uniformBuffers       []vk.Buffer
+	uniformBufferMems    []vk.DeviceMemory
+	uniformBuffersMapped []unsafe.Pointer
 }
 
 // Externally facing functions
@@ -64,6 +72,7 @@ func NewRenderCore(vertices []vm.Vertex, vertIndices []uint32) *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
+		t0:  time.Now(),
 		win: w,
 	}
 	c.vertices = vertices
@@ -80,11 +89,15 @@ func (c *Core) initialize() {
 	c.createSwapChain()
 	c.createImageViews()
 	c.createRenderPass()
+	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
 	c.createVertexBuffer()
 	c.createIndexBuffer()
+	c.createUniformBuffers()
+	c.createDescriptorPool()
+	c.createDescriptorSets()
 	c.createCommandBuffers()
 	c.createSyncObjects()
 }
@@ -92,6 +105,8 @@ func (c *Core) initialize() {
 type iterationHandler func(sdl.Event, *Core)
 
 func (c *Core) loop(ih iterationHandler) {
+	t0 := time.Now()
+	frames := 0
 	var event sdl.Event
 	c.winClose = false
 	for !c.winClose {
@@ -117,11 +132,15 @@ func (c *Core) loop(ih iterationHandler) {
 		}
 		if !c.winMinimized {
 			c.drawFrame()
+			frames++
 		} else {
 			// Sleep until new events change c.winMinimized
 			sdl.WaitEvent()
 		}
 	}
+	t1 := time.Now()
+	dtSec := float64(t1.Sub(t0).Milliseconds()) / 1000
+	log.Printf("Elapsed: %vs, rough avg fps: %v fps", dtSec, float64(frames)/dtSec)
 }
 
 func (c *Core) destroy() {
@@ -129,11 +148,19 @@ func (c *Core) destroy() {
 	vk.DeviceWaitIdle(c.device)
 	c.destroySwapChainAndDerivatives()
 
+	// Destroy all buffers (application data)
+	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
+		vk.DestroyBuffer(c.device, c.uniformBuffers[i], nil)
+		vk.FreeMemory(c.device, c.uniformBufferMems[i], nil)
+	}
+	vk.DestroyDescriptorPool(c.device, c.descriptorPool, nil)
+	vk.DestroyDescriptorSetLayout(c.device, c.descriptorSetLayout, nil)
 	vk.DestroyBuffer(c.device, c.vertexBuffer, nil)
 	vk.FreeMemory(c.device, c.vertexBufferMem, nil)
 	vk.DestroyBuffer(c.device, c.indexBuffer, nil)
 	vk.FreeMemory(c.device, c.indexBufferMem, nil)
 
+	// Destroy all infrastructure up to the sdl window
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
 		vk.DestroySemaphore(c.device, c.imageAvailableSems[i], nil)
 		vk.DestroySemaphore(c.device, c.renderFinishedSems[i], nil)
@@ -495,7 +522,6 @@ func (c *Core) createGraphicsPipeline() {
 		PName:               "main\x00", // entrypoint -> function name in the shader
 		PSpecializationInfo: nil,
 	}
-
 	fragmentShaderStageInfo := vk.PipelineShaderStageCreateInfo{
 		SType:               vk.StructureTypePipelineShaderStageCreateInfo,
 		PNext:               nil,
@@ -505,7 +531,6 @@ func (c *Core) createGraphicsPipeline() {
 		PName:               "main\x00", // entrypoint -> function name in the shader
 		PSpecializationInfo: nil,
 	}
-
 	shaderStages := []vk.PipelineShaderStageCreateInfo{vertexShaderStageInfo, fragmentShaderStageInfo}
 	log.Printf("Prepared %d shader stages for pipeline creation: %v", len(shaderStages), shaderStages)
 
@@ -521,8 +546,6 @@ func (c *Core) createGraphicsPipeline() {
 		DynamicStateCount: uint32(len(dynamicStates)),
 		PDynamicStates:    dynamicStates,
 	}
-	log.Printf("PipelineDynamicStateCreateInfo: %v", dynamicStateCreateInfo)
-
 	bindingDesc := []vk.VertexInputBindingDescription{vm.GetVertexBindingDescription()}
 	attributeDesc := vm.GetVertexAttributeDescriptions()
 	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
@@ -534,8 +557,6 @@ func (c *Core) createGraphicsPipeline() {
 		VertexAttributeDescriptionCount: uint32(len(attributeDesc)),
 		PVertexAttributeDescriptions:    attributeDesc,
 	}
-	log.Printf("PipelineVertexInputStateCreateInfo: %v", vertexInputInfo)
-
 	// Input assembly - this is how the vertices are "put together" and allows us to do optimizations on what
 	// data is passed to the GPU. Its interesting, but we will stick to the tutorial for now. See:
 	// https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions for more.
@@ -546,8 +567,6 @@ func (c *Core) createGraphicsPipeline() {
 		Topology:               vk.PrimitiveTopologyTriangleList,
 		PrimitiveRestartEnable: vk.False,
 	}
-	log.Printf("PipelineInputAssemblyStateCreateInfo: %v", inputAssemblyInfo)
-
 	viewportStateInfo := vk.PipelineViewportStateCreateInfo{
 		SType:         vk.StructureTypePipelineViewportStateCreateInfo,
 		PNext:         nil,
@@ -557,8 +576,6 @@ func (c *Core) createGraphicsPipeline() {
 		ScissorCount:  1,
 		PScissors:     nil,
 	}
-	log.Printf("PipelineViewportStateCreateInfo: %v", viewportStateInfo)
-
 	rasterizerInfo := vk.PipelineRasterizationStateCreateInfo{
 		SType:                   vk.StructureTypePipelineRasterizationStateCreateInfo,
 		PNext:                   nil,
@@ -566,16 +583,14 @@ func (c *Core) createGraphicsPipeline() {
 		DepthClampEnable:        vk.False,
 		RasterizerDiscardEnable: vk.False,
 		PolygonMode:             vk.PolygonModeFill,
-		CullMode:                vk.CullModeFlags(vk.CullModeBackBit),
-		FrontFace:               vk.FrontFaceClockwise,
+		CullMode:                vk.CullModeFlags(vk.CullModeNone),
+		FrontFace:               vk.FrontFaceCounterClockwise,
 		DepthBiasEnable:         vk.False,
 		DepthBiasConstantFactor: 0,
 		DepthBiasClamp:          0,
 		DepthBiasSlopeFactor:    0,
 		LineWidth:               1.0,
 	}
-	log.Printf("PipelineRasterizationStateCreateInfo: %v", rasterizerInfo)
-
 	multisamplingInfo := vk.PipelineMultisampleStateCreateInfo{
 		SType:                 vk.StructureTypePipelineMultisampleStateCreateInfo,
 		PNext:                 nil,
@@ -587,8 +602,6 @@ func (c *Core) createGraphicsPipeline() {
 		AlphaToCoverageEnable: vk.False,
 		AlphaToOneEnable:      vk.False,
 	}
-	log.Printf("PipelineMultisampleStateCreateInfo: %v", multisamplingInfo)
-
 	colorBlendAttachmentInfo := vk.PipelineColorBlendAttachmentState{
 		BlendEnable:         vk.False,
 		SrcColorBlendFactor: vk.BlendFactorOne,
@@ -599,7 +612,6 @@ func (c *Core) createGraphicsPipeline() {
 		AlphaBlendOp:        vk.BlendOpAdd,
 		ColorWriteMask:      vk.ColorComponentFlags(vk.ColorComponentRBit | vk.ColorComponentGBit | vk.ColorComponentBBit | vk.ColorComponentABit),
 	}
-
 	colorBlendingInfo := vk.PipelineColorBlendStateCreateInfo{
 		SType:           vk.StructureTypePipelineColorBlendStateCreateInfo,
 		PNext:           nil,
@@ -618,8 +630,8 @@ func (c *Core) createGraphicsPipeline() {
 		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
 		PNext:                  nil,
 		Flags:                  0,
-		SetLayoutCount:         0,
-		PSetLayouts:            nil,
+		SetLayoutCount:         1,
+		PSetLayouts:            []vk.DescriptorSetLayout{c.descriptorSetLayout},
 		PushConstantRangeCount: 0,
 		PPushConstantRanges:    nil,
 	}
@@ -968,8 +980,9 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 
 	vertBuffers := []vk.Buffer{c.vertexBuffer}
 	offsets := []vk.DeviceSize{0}
-	vk.CmdBindVertexBuffers(buffer, 0, 1, vertBuffers, offsets)
+	vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
 	vk.CmdBindIndexBuffer(buffer, c.indexBuffer, 0, vk.IndexTypeUint32)
+	vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 1, []vk.DescriptorSet{c.descriptorSets[imageIdx]}, 0, nil)
 
 	vk.CmdDrawIndexed(buffer, uint32(len(c.vertIndices)), 1, 0, 0, 0)
 
@@ -998,6 +1011,8 @@ func (c *Core) drawFrame() {
 
 	vk.ResetCommandBuffer(c.commandBuffers[c.currentFrameIdx], 0)
 	c.recordCommandBuffer(c.commandBuffers[c.currentFrameIdx], imgIdx)
+
+	c.updateUniformBuffer(c.currentFrameIdx)
 
 	submitInfo := vk.SubmitInfo{
 		SType:              vk.StructureTypeSubmitInfo,
@@ -1044,4 +1059,132 @@ func (c *Core) recreateSwapChain() {
 	c.createSwapChain()
 	c.createImageViews()
 	c.createFrameBuffers()
+}
+
+func (c *Core) createDescriptorSetLayout() {
+	uboLayoutBinding := vk.DescriptorSetLayoutBinding{
+		Binding:            0,                              // <- binding index in vert shader
+		DescriptorType:     vk.DescriptorTypeUniformBuffer, // <- type of binding in vert shader
+		DescriptorCount:    1,
+		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
+		PImmutableSamplers: nil,
+	}
+	layoutInfo := vk.DescriptorSetLayoutCreateInfo{
+		SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
+		PNext:        nil,
+		Flags:        0,
+		BindingCount: 1,
+		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding},
+	}
+	var dsl vk.DescriptorSetLayout
+	if vk.CreateDescriptorSetLayout(c.device, &layoutInfo, nil, &dsl) != vk.Success {
+		log.Panicf("Failed to create descriptor set layout")
+	}
+	c.descriptorSetLayout = dsl
+}
+
+func (c *Core) createUniformBuffers() {
+	uboBufSize := vk.DeviceSize(int(SizeOfUbo()))
+	log.Printf("UBO buffer size: %d Byte", uboBufSize)
+
+	c.uniformBuffers = make([]vk.Buffer, MAX_FRAMES_IN_FLIGHT)
+	c.uniformBufferMems = make([]vk.DeviceMemory, MAX_FRAMES_IN_FLIGHT)
+	c.uniformBuffersMapped = make([]unsafe.Pointer, MAX_FRAMES_IN_FLIGHT)
+
+	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
+	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
+		c.uniformBuffers[i], c.uniformBufferMems[i] = c.createBuffer(uboBufSize, vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit), memProps)
+		vk.MapMemory(c.device, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
+	}
+}
+
+func (c *Core) createDescriptorPool() {
+	poolSize := vk.DescriptorPoolSize{
+		Type:            vk.DescriptorTypeUniformBuffer,
+		DescriptorCount: MAX_FRAMES_IN_FLIGHT,
+	}
+	poolInfo := vk.DescriptorPoolCreateInfo{
+		SType:         vk.StructureTypeDescriptorPoolCreateInfo,
+		PNext:         nil,
+		Flags:         0,
+		MaxSets:       MAX_FRAMES_IN_FLIGHT,
+		PoolSizeCount: 1,
+		PPoolSizes:    []vk.DescriptorPoolSize{poolSize},
+	}
+	var dp vk.DescriptorPool
+	if vk.CreateDescriptorPool(c.device, &poolInfo, nil, &dp) != vk.Success {
+		log.Panicf("Failed to create descriptor pool")
+	}
+	c.descriptorPool = dp
+}
+
+func (c *Core) createDescriptorSets() {
+	layouts := []vk.DescriptorSetLayout{c.descriptorSetLayout, c.descriptorSetLayout, c.descriptorSetLayout}
+	allocInfo := vk.DescriptorSetAllocateInfo{
+		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
+		PNext:              nil,
+		DescriptorPool:     c.descriptorPool,
+		DescriptorSetCount: MAX_FRAMES_IN_FLIGHT,
+		PSetLayouts:        layouts,
+	}
+	sets := make([]vk.DescriptorSet, MAX_FRAMES_IN_FLIGHT)
+	if vk.AllocateDescriptorSets(c.device, &allocInfo, &(sets[0])) != vk.Success {
+		log.Panicf("Failed to allocate descriptor set")
+	}
+	log.Printf("%v", sets)
+	c.descriptorSets = sets
+
+	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
+		bufferInfo := vk.DescriptorBufferInfo{
+			Buffer: c.uniformBuffers[i],
+			Offset: 0,
+			Range:  vk.DeviceSize(SizeOfUbo()),
+		}
+		descriptorWrite := vk.WriteDescriptorSet{
+			SType:            vk.StructureTypeWriteDescriptorSet,
+			PNext:            nil,
+			DstSet:           c.descriptorSets[i],
+			DstBinding:       0,
+			DstArrayElement:  0,
+			DescriptorCount:  1,
+			DescriptorType:   vk.DescriptorTypeUniformBuffer,
+			PImageInfo:       nil,
+			PBufferInfo:      []vk.DescriptorBufferInfo{bufferInfo},
+			PTexelBufferView: nil,
+		}
+		vk.UpdateDescriptorSets(c.device, 1, []vk.WriteDescriptorSet{descriptorWrite}, 0, nil)
+	}
+}
+
+func (c *Core) updateUniformBuffer(frameIdx int32) {
+	elapsed := time.Since(c.t0).Seconds()
+	m := vm.NewUnitMat(4)
+
+	//m = m.Transpose()
+	m, _ = m.Scale(vm.Vec3{
+		X: 0.5,
+		Y: 0.5,
+		Z: 0.5,
+	})
+	m, _ = m.Rotate(elapsed*vm.ToRad(90), vm.Vec3{X: 1, Y: 1})
+	m, _ = m.Translate(vm.Vec3{
+		X: 0,
+		Y: 0,
+		Z: 0.5,
+	})
+
+	//log.Printf("%s", m.Describe())
+
+	v := vm.NewLookAt(vm.Vec3{X: 2, Z: -2}, vm.Vec3{}, vm.Vec3{Y: 1}) // guide says this needs to be Z 1 and not Y
+
+	ratio := float64(c.scExtend.Width) / float64(c.scExtend.Height)
+	p := vm.NewPerspective(vm.ToRad(45), ratio, 0.1, 10)
+	//log.Printf("%f", ratio)
+	//p[1][1] *= -1
+	ubo := UniformBufferObject{
+		model:      m,
+		view:       v,
+		projection: p,
+	}
+	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }

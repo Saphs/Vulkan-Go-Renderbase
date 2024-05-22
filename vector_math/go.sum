@@ -1,2 +1,4 @@
 github.com/goki/vulkan v1.0.7 h1:gd5a91pOle+icW7CS9U2SYas15TfPu+hV96Vqb/qq2w=
 github.com/goki/vulkan v1.0.7/go.mod h1:xPwQgSdRep28xG1Tn4yysNGFORyCsAZcf9DcljIxGRs=
+github.com/xlab/linmath v0.0.0-20220922225318-40b6290c3b40 h1:FmU7+0eD5GaZzxlbNxVMiC7th7/7qHtskrkWt0ltFkU=
+github.com/xlab/linmath v0.0.0-20220922225318-40b6290c3b40/go.mod h1:W1rLjlRa7JX2fcoZ4tb3ZkxuwI6pEX/JkDLPxe1/R1g=
