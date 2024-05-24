@@ -25,7 +25,8 @@ func NewMat(r uint, c uint) (Mat, error) {
 
 func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
 	rm := NewRotation(rad, axis)
-	res, err := m.Mult(&rm)
+	rm.Transpose()
+	res, err := rm.Mult(m)
 	if err != nil {
 		return nil, err
 	}

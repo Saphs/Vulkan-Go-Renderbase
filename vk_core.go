@@ -1160,31 +1160,32 @@ func (c *Core) updateUniformBuffer(frameIdx int32) {
 	elapsed := time.Since(c.t0).Seconds()
 	m := vm.NewUnitMat(4)
 
-	//m = m.Transpose()
-	m, _ = m.Scale(vm.Vec3{
-		X: 0.5,
-		Y: 0.5,
-		Z: 0.5,
-	})
-	m, _ = m.Rotate(elapsed*vm.ToRad(90), vm.Vec3{X: 1, Y: 1})
+	m, _ = m.Rotate(elapsed*vm.ToRad(90), vm.Vec3{Y: 1})
 	m, _ = m.Translate(vm.Vec3{
-		X: 0,
+		X: 0.25 + float32(elapsed)*0.5,
 		Y: 0,
-		Z: 0.5,
+		Z: 5,
 	})
 
 	//log.Printf("%s", m.Describe())
 
 	v := vm.NewLookAt(vm.Vec3{X: 2, Z: -2}, vm.Vec3{}, vm.Vec3{Y: 1}) // guide says this needs to be Z 1 and not Y
 
-	ratio := float64(c.scExtend.Width) / float64(c.scExtend.Height)
-	p := vm.NewPerspective(vm.ToRad(45), ratio, 0.1, 10)
-	//log.Printf("%f", ratio)
-	//p[1][1] *= -1
+	aspect := float32(c.scExtend.Width) / float32(c.scExtend.Height)
+	//mPer := vm.NewPerspectiveProjection(vm.Vec3{X: -aspect, Y: 1, Z: 1}, vm.Vec3{X: aspect, Y: -1, Z: 3})
+	//mOrt := vm.NewOrthographicProjection(vm.Vec3{X: -aspect, Y: 1, Z: 1}, vm.Vec3{X: aspect, Y: -1, Z: 3})
+	mPersp := vm.NewPerspectiveOld(vm.ToRad(45), float64(aspect), 1.0, 10)
+	//log.Printf("S * T = M_ORT: %s", mOrt.Describe())
+
+	log.Printf("model:\n%s", m.ToString())
+	log.Printf("proj:\n%s", mPersp.ToString())
+
+	log.Printf("%f", aspect)
+	//proj[1][1] *= -1
 	ubo := UniformBufferObject{
 		model:      m,
 		view:       v,
-		projection: p,
+		projection: mPersp,
 	}
 	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }

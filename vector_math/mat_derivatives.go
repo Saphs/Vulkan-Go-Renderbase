@@ -1,6 +1,8 @@
 package vector_math
 
-import "math"
+import (
+	"math"
+)
 
 func New4x4RotXMat(rad float64) Mat {
 	m, _ := NewMat(4, 4)
@@ -80,16 +82,50 @@ func NewRotation(rad float64, axis Vec3) Mat {
 	return rm
 }
 
-// NewPerspective implemented after: https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
-func NewPerspective(fovy float64, aspect float64, zNear float32, zFar float32) Mat {
-	f := math.Tan(fovy / 2)
-	m := NewUnitMat(4)
-	m[0][0] = float32(1 / (aspect * f))
-	m[1][1] = float32(1 / f)
-	m[2][2] = zFar / (zFar - zNear)
+// NewPerspectiveProjection implemented after: https://www.youtube.com/watch?v=U0_ONQQ5ZNM
+func NewPerspectiveOld(fovy float64, aspect float64, near float32, far float32) Mat {
+	focalLen := 1 / math.Tan(fovy/2)
+	m, _ := NewMat(4, 4)
+	m[0][0] = float32(focalLen / aspect)
+	m[1][1] = float32(focalLen)
+	m[2][2] = far / (far - near)
 	m[2][3] = 1
-	m[3][2] = -(zFar * zNear) / (zFar - zNear)
+	m[3][2] = -(far * near) / (far - near)
 	return m
+}
+
+func NewPerspective(n float32, f float32) Mat {
+	m, _ := NewMat(4, 4)
+	m[0][0] = n
+	m[1][1] = n
+	m[2][2] = f + n
+	m[2][3] = -f * n
+	m[3][2] = 1
+	return m
+}
+
+// NewOrthographicProjection constructs a new matrix representing an orthographic projection from
+// a cuboid on to Vulkan's canonical view volume (CVV), which spans from (-1, 1, 0) to (1, -1, 1). The
+// returned projection takes any cuboid spanning from lbn (Left-Bottom-Near) to rtf (Right-Top-Far)
+// and moves its values into the CVV, which is in turn displayed.
+// -------------------------------------------------------------
+// Setting the orthographic view volume to have the same aspect ratio as the viewport will avoid stretching
+// any points. To do this, let the following term be true: "right - left = aspect * (bottom - top)". The
+// current aspect ratio of the viewport can be retrieved via the swap chain's width and height.
+func NewOrthographicProjection(lbn Vec3, rtf Vec3) Mat {
+	// Scaling factors assume the given CVV cuboids dimensions as fixed (width: 2, height: 2, depth: 2)
+	mScale := NewScale(Vec3{
+		X: float32(2 / (math.Abs(float64(rtf.X) - float64(lbn.X)))),
+		Y: float32(2 / (math.Abs(float64(lbn.Y) - float64(rtf.Y)))),
+		Z: float32(1 / (math.Abs(float64(rtf.Z) - float64(lbn.Z)))),
+	})
+	mTrans := NewTranslation(Vec3{
+		X: -(rtf.X + lbn.X) / (rtf.X - lbn.X),
+		Y: -(lbn.X + rtf.X) / (lbn.X - rtf.X),
+		Z: -lbn.Z / (rtf.Z - lbn.Z),
+	})
+	mOrt, _ := mScale.Mult(&mTrans)
+	return mOrt
 }
 
 // NewLookAt implemented after http://www.opengl.org/sdk/docs/man2/xhtml/gluLookAt.xml

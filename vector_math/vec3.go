@@ -22,6 +22,22 @@ func (v Vec3) Sub(w Vec3) Vec3 {
 	}
 }
 
+func (v Vec3) Add(w Vec3) Vec3 {
+	return Vec3{
+		X: v.X + w.X,
+		Y: v.Y + w.Y,
+		Z: v.Z + w.Z,
+	}
+}
+
+func (v Vec3) ScalarMul(factor float32) Vec3 {
+	return Vec3{
+		X: v.X * factor,
+		Y: v.Y * factor,
+		Z: v.Z * factor,
+	}
+}
+
 func (v Vec3) Norm() Vec3 {
 	l := float32(math.Sqrt(float64((v.X * v.X) + (v.Y * v.Y) + (v.Z * v.Z))))
 	return Vec3{

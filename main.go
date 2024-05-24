@@ -57,19 +57,19 @@ func main() {
 	// Expected size in memory -> 64 Byte with 4 Bytes of padding as we have 8 Byte words on a 64Bit machine
 	v := []vm.Vertex{ // 20 * 3 = 60 Byte
 		{ // 8 + 12 = 20 Byte
-			Pos:   vm.Vec2{X: -0.5, Y: -0.5}, // 8 Byte (float32 * 2, no padding)
-			Color: vm.Vec3{X: 1, Y: 0, Z: 0}, // 12 Byte (float32 * 3, no padding)
+			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: 0}, // 12 Byte (float32 * 3, no padding)
+			Color: vm.Vec3{X: 1, Y: 0, Z: 0},       // 12 Byte (float32 * 3, no padding)
 		},
 		{
-			Pos:   vm.Vec2{X: 0.5, Y: -0.5},
+			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: 0},
 			Color: vm.Vec3{X: 0, Y: 1, Z: 0},
 		},
 		{
-			Pos:   vm.Vec2{X: 0.5, Y: 0.5},
+			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: 0},
 			Color: vm.Vec3{X: 0, Y: 0, Z: 1},
 		},
 		{
-			Pos:   vm.Vec2{X: -0.5, Y: 0.5},
+			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: 0},
 			Color: vm.Vec3{X: 1, Y: 0, Z: 1},
 		},
 	}
@@ -82,24 +82,6 @@ func main() {
 	core.loop(onIteration)
 	core.destroy()
 
-	/*println("Matrix stizzl =))")
-	var err error
-	A, _ := vm.NewMat(4, 4)
-	A.FillRng(1, 5)
-	B := vm.NewUnitMat(4)
-	Rx := vm.New4x4RotXMat(vm.ToRad(90))
-	Ry := vm.New4x4RotYMat(vm.ToRad(90))
-	Rz := vm.New4x4RotZMat(vm.ToRad(90))
-	_C, err := A.Mult(&B)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("A:\n%s", A.ToString())
-	log.Printf("B:\n%s", B.ToString())
-	log.Printf("AB:\n%s", _C.Describe())
-	log.Printf("Rx:\n%s", Rx.ToString())
-	log.Printf("COS(%.5f) = %.2f", vm.ToRad(90), math.Cos(vm.ToRad(90)))
-	log.Printf("Ry:\n%s", Ry.ToString())
-	log.Printf("Rz:\n%s", Rz.ToString())
-	*/
+	println("Matrix stizzl =))")
+
 }

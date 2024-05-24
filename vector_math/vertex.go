@@ -6,7 +6,7 @@ import (
 )
 
 type Vertex struct {
-	Pos   Vec2
+	Pos   Vec3
 	Color Vec3
 }
 
