@@ -48,7 +48,18 @@ func onIteration(event sdl.Event, c *Core) {
 			c.vertices[0].Pos.X = 1.0
 			log.Printf("Now -> %v", c.vertices)
 			c.createVertexBuffer()
+		} else if ev.Keysym.Sym == sdl.K_2 && ev.Type == sdl.KEYUP {
+			var newProj int
+			if c.cam.Projection == vm.CAM_PERSPECTIVE_PROJECTION {
+				newProj = vm.CAM_ORTHOGRAPHIC_PROJECTION
+			} else {
+				newProj = vm.CAM_PERSPECTIVE_PROJECTION
+			}
+
+			log.Printf("Switching projection to -> %d", newProj)
+			c.cam.Projection = newProj
 		}
+
 	}
 }
 
@@ -78,10 +89,24 @@ func main() {
 		0, 1, 2, 2, 3, 0,
 	}
 
-	core := NewRenderCore(v, id)
+	cam := vm.NewCamera(45, 0.1, 100)
+	cam.Projection = vm.CAM_PERSPECTIVE_PROJECTION
+	cam.View = vm.NewDirectionView(
+		vm.Vec3{X: 10, Z: -15},
+		vm.Vec3{0.2, 0, 5},
+		vm.Vec3{Y: -1},
+	)
+
+	mesh := vm.NewMesh(v, id)
+	mesh.ModelMat, _ = mesh.ModelMat.Translate(vm.Vec3{
+		X: 0,
+		Y: 0,
+		Z: 5,
+	})
+
+	core := NewRenderCore()
+	core.SetScene(mesh, cam)
+	core.Initialize()
 	core.loop(onIteration)
 	core.destroy()
-
-	println("Matrix stizzl =))")
-
 }

@@ -64,24 +64,32 @@ type Core struct {
 	uniformBuffers       []vk.Buffer
 	uniformBufferMems    []vk.DeviceMemory
 	uniformBuffersMapped []unsafe.Pointer
+
+	// 3D World
+	cam  *vm.Camera
+	mesh *vm.Mesh
 }
 
 // Externally facing functions
 
-func NewRenderCore(vertices []vm.Vertex, vertIndices []uint32) *Core {
+func NewRenderCore() *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
 		t0:  time.Now(),
 		win: w,
 	}
-	c.vertices = vertices
-	c.vertIndices = vertIndices
-	c.initialize()
 	return c
 }
 
-func (c *Core) initialize() {
+func (c *Core) SetScene(m *vm.Mesh, cam *vm.Camera) {
+	c.vertices = m.Vertices
+	c.vertIndices = m.VIndices
+	c.mesh = m
+	c.cam = cam
+}
+
+func (c *Core) Initialize() {
 	c.createInstance()
 	c.createSurface()
 	c.selectPhysicalDevice()
@@ -1157,35 +1165,25 @@ func (c *Core) createDescriptorSets() {
 }
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
-	elapsed := time.Since(c.t0).Seconds()
-	m := vm.NewUnitMat(4)
 
-	m, _ = m.Rotate(elapsed*vm.ToRad(90), vm.Vec3{Y: 1})
-	m, _ = m.Translate(vm.Vec3{
-		X: 0.25 + float32(elapsed)*0.5,
-		Y: 0,
+	elapsed := time.Since(c.t0).Seconds()
+	c.cam.Aspect = float32(c.scExtend.Width) / float32(c.scExtend.Height)
+	p := c.cam.GetProjection()
+
+	m := vm.NewUnitMat(4)
+	c.mesh.ModelMat, _ = m.Translate(vm.Vec3{
+		X: 0, //float32(math.Sin(elapsed)),
+		Y: float32(math.Cos(elapsed) * 0.5),
 		Z: 5,
 	})
+	c.mesh.ModelMat, _ = c.mesh.ModelMat.Rotate(vm.ToRad(elapsed*0), vm.Vec3{X: 1})
 
-	//log.Printf("%s", m.Describe())
+	//log.Printf("\n%v", c.cam.View.ToString())
 
-	v := vm.NewLookAt(vm.Vec3{X: 2, Z: -2}, vm.Vec3{}, vm.Vec3{Y: 1}) // guide says this needs to be Z 1 and not Y
-
-	aspect := float32(c.scExtend.Width) / float32(c.scExtend.Height)
-	//mPer := vm.NewPerspectiveProjection(vm.Vec3{X: -aspect, Y: 1, Z: 1}, vm.Vec3{X: aspect, Y: -1, Z: 3})
-	//mOrt := vm.NewOrthographicProjection(vm.Vec3{X: -aspect, Y: 1, Z: 1}, vm.Vec3{X: aspect, Y: -1, Z: 3})
-	mPersp := vm.NewPerspectiveOld(vm.ToRad(45), float64(aspect), 1.0, 10)
-	//log.Printf("S * T = M_ORT: %s", mOrt.Describe())
-
-	log.Printf("model:\n%s", m.ToString())
-	log.Printf("proj:\n%s", mPersp.ToString())
-
-	log.Printf("%f", aspect)
-	//proj[1][1] *= -1
 	ubo := UniformBufferObject{
-		model:      m,
-		view:       v,
-		projection: mPersp,
+		model:      c.mesh.ModelMat,
+		view:       c.cam.View,
+		projection: p,
 	}
 	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }

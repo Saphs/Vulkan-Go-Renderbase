@@ -26,7 +26,7 @@ func NewMat(r uint, c uint) (Mat, error) {
 func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
 	rm := NewRotation(rad, axis)
 	rm.Transpose()
-	res, err := rm.Mult(m)
+	res, err := m.Mult(&rm)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
 }
 
 func (m *Mat) Translate(move Vec3) (Mat, error) {
-	tm := NewTranslationT(move)
+	tm := NewTranslation(move)
 	res, err := m.Mult(&tm)
 	if err != nil {
 		return nil, err
