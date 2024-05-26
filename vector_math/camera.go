@@ -11,28 +11,48 @@ const (
 )
 
 type Camera struct {
-	Projection int
+	ProjectionType int
 
-	// Projection matrix precursors
 	Fov    float32
 	Aspect float32
 	Near   float32
 	Far    float32
+
+	Pos        Vec3
+	LookDir    Vec3
+	LookTarget *Vec3
+	Up         Vec3
 
 	View Mat
 }
 
 func NewCamera(fov float32, near float32, far float32) *Camera {
 	return &Camera{
-		Fov:  fov,
-		Near: near,
-		Far:  far,
-		View: NewUnitMat(4),
+		Fov:        fov,
+		Near:       near,
+		Far:        far,
+		LookDir:    Vec3{Z: 1},
+		LookTarget: nil,
+		Up:         Vec3{Y: -1},
+		View:       NewUnitMat(4),
 	}
 }
 
+func (c *Camera) Move(v Vec3) {
+	c.Pos = c.Pos.Add(v)
+}
+
+func (c *Camera) Turn(deg float64, axis Vec3) {
+	rm := NewRotation(ToRad(deg), axis)
+	c.LookDir = Apply(c.LookDir, 0, rm)
+}
+
+func (c *Camera) SetTarget(v Vec3) {
+	c.LookTarget = &v
+}
+
 func (c *Camera) GetProjection() Mat {
-	switch c.Projection {
+	switch c.ProjectionType {
 	case CAM_PERSPECTIVE_PROJECTION:
 		return newPerspectiveProjection(
 			ToRad(float64(c.Fov)), float64(c.Aspect), c.Near, c.Far,
@@ -44,6 +64,14 @@ func (c *Camera) GetProjection() Mat {
 	default:
 		log.Printf("Failed to select projection type, returning identity.")
 		return NewUnitMat(4)
+	}
+}
+
+func (c *Camera) GetView() Mat {
+	if c.LookTarget != nil {
+		return NewTargetView(c.Pos, *c.LookTarget, c.Up)
+	} else {
+		return NewDirectionView(c.Pos, c.LookDir, c.Up)
 	}
 }
 

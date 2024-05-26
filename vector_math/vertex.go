@@ -23,7 +23,7 @@ func GetVertexAttributeDescriptions() []vk.VertexInputAttributeDescription {
 		{
 			Location: 0,
 			Binding:  0,
-			Format:   vk.FormatR32g32Sfloat,
+			Format:   vk.FormatR32g32b32Sfloat,
 			Offset:   uint32(unsafe.Offsetof(Vertex{}.Pos)),
 		},
 		{

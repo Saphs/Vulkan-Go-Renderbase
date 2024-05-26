@@ -82,40 +82,6 @@ func NewRotation(rad float64, axis Vec3) Mat {
 	return rm
 }
 
-// NewLookAt implemented after http://www.opengl.org/sdk/docs/man2/xhtml/gluLookAt.xml
-func NewLookAt(camPos Vec3, camTarget Vec3, up Vec3) Mat {
-	camDir := camPos.Sub(camTarget).Norm()
-	camRight := up.Cross(camDir).Norm()
-	camUp := camDir.Cross(camRight)
-
-	m, _ := NewMat(4, 4)
-
-	m[0][0] = camRight.X
-	m[0][1] = camRight.Y
-	m[0][2] = camRight.Z
-
-	m[1][0] = camUp.X
-	m[1][1] = camUp.Y
-	m[1][2] = camUp.Z
-
-	m[2][0] = camDir.X
-	m[2][1] = camDir.Y
-	m[2][2] = camDir.Z
-
-	m[3][3] = 1
-
-	m = m.Transpose()
-
-	mP := NewTranslation(Vec3{
-		X: -camPos.X,
-		Y: -camPos.Y,
-		Z: -camPos.Z,
-	})
-
-	m, _ = mP.Mult(&m)
-	return m
-}
-
 func NewScale(s Vec3) Mat {
 	sm := NewUnitMat(4)
 	sm[0][0] = s.X
@@ -138,4 +104,22 @@ func NewTranslationT(t Vec3) Mat {
 	tm[3][1] = t.Y
 	tm[3][2] = t.Z
 	return tm
+}
+
+// Apply is a hacky way to multiply a vec3 by a Mat4x4 by using a homogeneous
+// coordinate that can be specified.
+// ToDo: Replace this with a generalized Vec.Mul() function or similar
+func Apply(v Vec3, w float32, m Mat) Vec3 {
+	v4 := []float32{v.X, v.Y, v.Z, w}
+	res := make([]float32, 4)
+	for i := 0; i < m.RowCnt(); i++ {
+		for j := 0; j < m.ColCnt(); j++ {
+			res[i] = res[i] + (v4[i] * m[i][j])
+		}
+	}
+	return Vec3{
+		res[0],
+		res[1],
+		res[2],
+	}
 }

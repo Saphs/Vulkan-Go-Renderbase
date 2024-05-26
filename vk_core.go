@@ -29,14 +29,14 @@ type Core struct {
 	graphicsQ     vk.Queue
 	presentQ      vk.Queue
 
-	// Window-Device interoperability
-	swapChain vk.Swapchain
-	scImages  []vk.Image
-	scFormat  vk.SurfaceFormat
-	scExtend  vk.Extent2D
+	// Target level
+	swapChain  vk.Swapchain
+	scImages   []vk.Image
+	scImgViews []vk.ImageView
+	scFormat   vk.SurfaceFormat
+	scExtend   vk.Extent2D
 
-	// Drawing infrastructure
-	imgViews            []vk.ImageView
+	// Drawing infrastructure level
 	renderPass          vk.RenderPass
 	descriptorSetLayout vk.DescriptorSetLayout
 	descriptorPool      vk.DescriptorPool
@@ -46,15 +46,14 @@ type Core struct {
 	scFrameBuffers      []vk.Framebuffer
 	commandPool         vk.CommandPool
 
-	// Draw / Frame level
+	// Frame level
 	commandBuffers     []vk.CommandBuffer
 	currentFrameIdx    int32
 	imageAvailableSems []vk.Semaphore
 	renderFinishedSems []vk.Semaphore
 	inFlightFens       []vk.Fence
 
-	// Data transfer
-	t0                   time.Time
+	// Data level
 	vertices             []vm.Vertex
 	vertexBuffer         vk.Buffer
 	vertexBufferMem      vk.DeviceMemory
@@ -76,7 +75,6 @@ func NewRenderCore() *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
-		t0:  time.Now(),
 		win: w,
 	}
 	return c
@@ -112,7 +110,13 @@ func (c *Core) Initialize() {
 
 type iterationHandler func(sdl.Event, *Core)
 
-func (c *Core) loop(ih iterationHandler) {
+type drawHandler func(float64, *Core)
+
+// loop this function represents the event-loop for user interaction and currently also contains
+// the primary draw call that renders each frame. The whole purpose of this function is to provide
+// a neat interface for call backs and all basic functionality a well-behaved app should have. E.g.:
+// Not rendering if minimized, close on Window 'close button', close on ESC key.
+func (c *Core) loop(ih iterationHandler, dh drawHandler) {
 	t0 := time.Now()
 	frames := 0
 	var event sdl.Event
@@ -139,6 +143,7 @@ func (c *Core) loop(ih iterationHandler) {
 			ih(event, c)
 		}
 		if !c.winMinimized {
+			dh(time.Since(t0).Seconds(), c)
 			c.drawFrame()
 			frames++
 		} else {
@@ -195,8 +200,8 @@ func (c *Core) destroySwapChainAndDerivatives() {
 	for i := range c.scFrameBuffers {
 		vk.DestroyFramebuffer(c.device, c.scFrameBuffers[i], nil)
 	}
-	for i := range c.imgViews {
-		vk.DestroyImageView(c.device, c.imgViews[i], nil)
+	for i := range c.scImgViews {
+		vk.DestroyImageView(c.device, c.scImgViews[i], nil)
 	}
 	vk.DestroySwapchain(c.device, c.swapChain, nil)
 }
@@ -427,7 +432,7 @@ func (c *Core) createSwapChain() {
 }
 
 func (c *Core) createImageViews() {
-	c.imgViews = make([]vk.ImageView, len(c.scImages))
+	c.scImgViews = make([]vk.ImageView, len(c.scImages))
 	for i := range c.scImages {
 		createInfo := &vk.ImageViewCreateInfo{
 			SType:    vk.StructureTypeImageViewCreateInfo,
@@ -451,12 +456,12 @@ func (c *Core) createImageViews() {
 			},
 		}
 		var err error
-		c.imgViews[i], err = VkCreateImageView(c.device, createInfo, nil)
+		c.scImgViews[i], err = VkCreateImageView(c.device, createInfo, nil)
 		if err != nil {
 			log.Panicf("Failed create image view %d due to: %s", i, "err")
 		}
 	}
-	log.Printf("Successfully created %d image views %v", len(c.imgViews), c.imgViews)
+	log.Printf("Successfully created %d image views %v", len(c.scImgViews), c.scImgViews)
 }
 
 func (c *Core) createRenderPass() {
@@ -591,7 +596,7 @@ func (c *Core) createGraphicsPipeline() {
 		DepthClampEnable:        vk.False,
 		RasterizerDiscardEnable: vk.False,
 		PolygonMode:             vk.PolygonModeFill,
-		CullMode:                vk.CullModeFlags(vk.CullModeNone),
+		CullMode:                vk.CullModeFlags(vk.CullModeBackBit),
 		FrontFace:               vk.FrontFaceCounterClockwise,
 		DepthBiasEnable:         vk.False,
 		DepthBiasConstantFactor: 0,
@@ -686,15 +691,15 @@ func (c *Core) createGraphicsPipeline() {
 }
 
 func (c *Core) createFrameBuffers() {
-	c.scFrameBuffers = make([]vk.Framebuffer, len(c.imgViews))
-	for i := range c.imgViews {
+	c.scFrameBuffers = make([]vk.Framebuffer, len(c.scImgViews))
+	for i := range c.scImgViews {
 		framebufferInfo := vk.FramebufferCreateInfo{
 			SType:           vk.StructureTypeFramebufferCreateInfo,
 			PNext:           nil,
 			Flags:           0,
 			RenderPass:      c.renderPass,
 			AttachmentCount: 1,
-			PAttachments:    []vk.ImageView{c.imgViews[i]},
+			PAttachments:    []vk.ImageView{c.scImgViews[i]},
 			Width:           c.scExtend.Width,
 			Height:          c.scExtend.Height,
 			Layers:          1,
@@ -831,6 +836,10 @@ func (c *Core) createVertexBuffer() {
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
 	)
+	log.Printf(
+		"Created vertex buffer handle@%v -> memAddr@%v -> Size: %d Byte",
+		c.vertexBuffer, c.vertexBufferMem, bufSize,
+	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stagingBuffer, c.vertexBuffer, bufSize)
@@ -918,7 +927,7 @@ func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
 }
 
 func (c *Core) findMemoryType(typeFilter uint32, propFlags vk.MemoryPropertyFlags) uint32 {
-	log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(c.pdMemoryProps))
+	//log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(c.pdMemoryProps))
 	for i := uint32(0); i < c.pdMemoryProps.MemoryTypeCount; i++ {
 		ofType := (typeFilter & (1 << i)) > 0
 		hasProperties := c.pdMemoryProps.MemoryTypes[i].PropertyFlags&propFlags == propFlags
@@ -951,7 +960,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		Extent: c.scExtend,
 	}
 	clearValues := []vk.ClearValue{
-		vk.NewClearValue([]float32{0, 0, 0, 1}),
+		vk.NewClearValue([]float32{0.01, 0.01, 0.01, 1}),
 	}
 	renderPassInfo := vk.RenderPassBeginInfo{
 		SType:           vk.StructureTypeRenderPassBeginInfo,
@@ -1165,25 +1174,11 @@ func (c *Core) createDescriptorSets() {
 }
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
-
-	elapsed := time.Since(c.t0).Seconds()
 	c.cam.Aspect = float32(c.scExtend.Width) / float32(c.scExtend.Height)
-	p := c.cam.GetProjection()
-
-	m := vm.NewUnitMat(4)
-	c.mesh.ModelMat, _ = m.Translate(vm.Vec3{
-		X: 0, //float32(math.Sin(elapsed)),
-		Y: float32(math.Cos(elapsed) * 0.5),
-		Z: 5,
-	})
-	c.mesh.ModelMat, _ = c.mesh.ModelMat.Rotate(vm.ToRad(elapsed*0), vm.Vec3{X: 1})
-
-	//log.Printf("\n%v", c.cam.View.ToString())
-
 	ubo := UniformBufferObject{
 		model:      c.mesh.ModelMat,
-		view:       c.cam.View,
-		projection: p,
+		view:       c.cam.GetView(),
+		projection: c.cam.GetProjection(),
 	}
 	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }

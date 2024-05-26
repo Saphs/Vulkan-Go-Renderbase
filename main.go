@@ -43,57 +43,99 @@ func onIteration(event sdl.Event, c *Core) {
 			ev.YRel,
 		)
 	case *sdl.KeyboardEvent:
-		if ev.Keysym.Sym == sdl.K_1 {
-			log.Printf("Updating vertices")
-			c.vertices[0].Pos.X = 1.0
-			log.Printf("Now -> %v", c.vertices)
-			c.createVertexBuffer()
-		} else if ev.Keysym.Sym == sdl.K_2 && ev.Type == sdl.KEYUP {
-			var newProj int
-			if c.cam.Projection == vm.CAM_PERSPECTIVE_PROJECTION {
-				newProj = vm.CAM_ORTHOGRAPHIC_PROJECTION
-			} else {
-				newProj = vm.CAM_PERSPECTIVE_PROJECTION
+		if ev.Type == sdl.KEYUP {
+			switch ev.Keysym.Sym {
+			case sdl.K_1:
+				var newProj int
+				if c.cam.ProjectionType == vm.CAM_PERSPECTIVE_PROJECTION {
+					newProj = vm.CAM_ORTHOGRAPHIC_PROJECTION
+				} else {
+					newProj = vm.CAM_PERSPECTIVE_PROJECTION
+				}
+				log.Printf("Switching projection to -> %d", newProj)
+				c.cam.ProjectionType = newProj
+			case sdl.K_2:
+				if c.cam.LookTarget != nil {
+					c.cam.LookTarget = nil
+				} else {
+					c.cam.SetTarget(vm.Vec3{})
+				}
+			case sdl.K_3:
+				// Reset camera
+				c.cam.Pos = vm.Vec3{Z: -3}
+				c.cam.LookDir = vm.Vec3{Z: 1}
+				c.cam.LookTarget = nil
+			case sdl.K_w:
+				c.cam.Move(vm.Vec3{Z: 1})
+			case sdl.K_a:
+				c.cam.Move(vm.Vec3{X: -1})
+			case sdl.K_s:
+				c.cam.Move(vm.Vec3{Z: -1})
+			case sdl.K_d:
+				c.cam.Move(vm.Vec3{X: 1})
 			}
-
-			log.Printf("Switching projection to -> %d", newProj)
-			c.cam.Projection = newProj
 		}
-
 	}
+}
+
+func onDraw(elapsed float64, c *Core) {
+	m := vm.NewUnitMat(4)
+	m, _ = m.Rotate(elapsed*vm.ToRad(45), vm.Vec3{X: 1, Y: 1})
+	c.mesh.ModelMat = m
 }
 
 func main() {
 
 	// Expected size in memory -> 64 Byte with 4 Bytes of padding as we have 8 Byte words on a 64Bit machine
-	v := []vm.Vertex{ // 20 * 3 = 60 Byte
-		{ // 8 + 12 = 20 Byte
-			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: 0}, // 12 Byte (float32 * 3, no padding)
-			Color: vm.Vec3{X: 1, Y: 0, Z: 0},       // 12 Byte (float32 * 3, no padding)
+	v := []vm.Vertex{ // 24 * 8 = 192 Byte
+		{ // 8 + 12 = 24 Byte [0]
+			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: -0.5}, // 12 Byte (float32 * 3, no padding)
+			Color: vm.Vec3{X: 1, Y: 0, Z: 0},          // 12 Byte (float32 * 3, no padding)
 		},
-		{
-			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: 0},
+		{ // [1]
+			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: -0.5},
 			Color: vm.Vec3{X: 0, Y: 1, Z: 0},
 		},
-		{
-			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: 0},
+		{ // [2]
+			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: -0.5},
 			Color: vm.Vec3{X: 0, Y: 0, Z: 1},
 		},
-		{
-			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: 0},
-			Color: vm.Vec3{X: 1, Y: 0, Z: 1},
+		{ // [3]
+			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: -0.5},
+			Color: vm.Vec3{X: 1, Y: 0.5, Z: 1},
+		},
+		{ // 8 + 12 = 20 Byte [4]
+			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: 0.5}, // 12 Byte (float32 * 3, no padding)
+			Color: vm.Vec3{X: 1, Y: 0.5, Z: 0.5},     // 12 Byte (float32 * 3, no padding)
+		},
+		{ // [5]
+			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: 0.5},
+			Color: vm.Vec3{X: 0.5, Y: 1, Z: 0.5},
+		},
+		{ // [6]
+			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5},
+			Color: vm.Vec3{X: 0.5, Y: 0.5, Z: 1},
+		},
+		{ // [7]
+			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: 0.5},
+			Color: vm.Vec3{X: 0, Y: 0.5, Z: 0},
 		},
 	}
 
 	id := []uint32{
-		0, 1, 2, 2, 3, 0,
+		2, 1, 0, 0, 3, 2, // front
+		5, 1, 6, 1, 2, 6, // right
+		4, 5, 6, 7, 4, 6, // back
+		4, 7, 0, 0, 7, 3, // left
+		0, 1, 5, 5, 4, 0, // top
+		3, 7, 6, 2, 3, 6, // bottom
 	}
 
 	cam := vm.NewCamera(45, 0.1, 100)
-	cam.Projection = vm.CAM_PERSPECTIVE_PROJECTION
+	cam.ProjectionType = vm.CAM_PERSPECTIVE_PROJECTION
 	cam.View = vm.NewDirectionView(
-		vm.Vec3{X: 10, Z: -15},
-		vm.Vec3{0.2, 0, 5},
+		vm.Vec3{X: 0, Z: -5},
+		vm.Vec3{0, 0, 5},
 		vm.Vec3{Y: -1},
 	)
 
@@ -107,6 +149,9 @@ func main() {
 	core := NewRenderCore()
 	core.SetScene(mesh, cam)
 	core.Initialize()
-	core.loop(onIteration)
+	core.loop(
+		onIteration,
+		onDraw,
+	)
 	core.destroy()
 }
