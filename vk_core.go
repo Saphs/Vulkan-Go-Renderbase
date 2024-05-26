@@ -5,7 +5,6 @@ import (
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
-	vm "local/vector_math"
 	"log"
 	"math"
 	"time"
@@ -54,7 +53,7 @@ type Core struct {
 	inFlightFens       []vk.Fence
 
 	// Data level
-	vertices             []vm.Vertex
+	vertices             []Vertex
 	vertexBuffer         vk.Buffer
 	vertexBufferMem      vk.DeviceMemory
 	vertIndices          []uint32
@@ -65,8 +64,8 @@ type Core struct {
 	uniformBuffersMapped []unsafe.Pointer
 
 	// 3D World
-	cam  *vm.Camera
-	mesh *vm.Mesh
+	cam  *Camera
+	mesh *Mesh
 }
 
 // Externally facing functions
@@ -80,7 +79,7 @@ func NewRenderCore() *Core {
 	return c
 }
 
-func (c *Core) SetScene(m *vm.Mesh, cam *vm.Camera) {
+func (c *Core) SetScene(m *Mesh, cam *Camera) {
 	c.vertices = m.Vertices
 	c.vertIndices = m.VIndices
 	c.mesh = m
@@ -559,8 +558,8 @@ func (c *Core) createGraphicsPipeline() {
 		DynamicStateCount: uint32(len(dynamicStates)),
 		PDynamicStates:    dynamicStates,
 	}
-	bindingDesc := []vk.VertexInputBindingDescription{vm.GetVertexBindingDescription()}
-	attributeDesc := vm.GetVertexAttributeDescriptions()
+	bindingDesc := []vk.VertexInputBindingDescription{GetVertexBindingDescription()}
+	attributeDesc := GetVertexAttributeDescriptions()
 	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		PNext:                           nil,

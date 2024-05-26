@@ -1,7 +1,6 @@
 package vector_math
 
 import (
-	lin "github.com/xlab/linmath"
 	"testing"
 )
 
@@ -123,27 +122,6 @@ func TestArbitraryRotation(t *testing.T) {
 			mrExample.ToString(),
 		)
 	}
-}
-
-func TestNewLookAt(t *testing.T) {
-	t.Logf("Rotation arbitrary:")
-	eyeVec := lin.Vec3{0.0, 3.0, 5.0}
-	originVec := lin.Vec3{0.0, 0.0, 0.0}
-	upVec := lin.Vec3{0.0, 1.0, 0.0}
-	lookAtExample := lin.Mat4x4{}
-	lookAtExample.LookAt(
-		&eyeVec,
-		&originVec,
-		&upVec,
-	)
-	la := NewLookAt(
-		Vec3{X: 0, Y: 3.0, Z: 5.0},
-		Vec3{X: 0, Y: 0, Z: 0},
-		Vec3{X: 0, Y: 1, Z: 0},
-	)
-
-	t.Logf("%s", la.Describe())
-	t.Logf("%v", lookAtExample)
 }
 
 func TestNewPerspective(t *testing.T) {

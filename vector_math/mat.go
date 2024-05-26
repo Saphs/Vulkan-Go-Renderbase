@@ -23,81 +23,6 @@ func NewMat(r uint, c uint) (Mat, error) {
 	return m, nil
 }
 
-func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
-	rm := NewRotation(rad, axis)
-	rm.Transpose()
-	res, err := m.Mult(&rm)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (m *Mat) Translate(move Vec3) (Mat, error) {
-	tm := NewTranslation(move)
-	res, err := m.Mult(&tm)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (m *Mat) Scale(factors Vec3) (Mat, error) {
-	sm := NewScale(factors)
-	res, err := m.Mult(&sm)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-func (m *Mat) Transpose() Mat {
-	mT, _ := NewMat(uint(m.ColCnt()), uint(m.RowCnt()))
-	for i := range *m {
-		for j := range (*m)[i] {
-			mT[j][i] = (*m)[i][j]
-		}
-	}
-	return mT
-}
-
-func (m *Mat) Fill(f float32) {
-	for i := range *m {
-		for j := range (*m)[i] {
-			(*m)[i][j] = f
-		}
-	}
-}
-
-func (m *Mat) FillRng(min float32, max float32) {
-	for i := range *m {
-		for j := range (*m)[i] {
-			(*m)[i][j] = float32(rng(int(min), int(max)))
-		}
-	}
-}
-
-func (m *Mat) Mult(b *Mat) (Mat, error) {
-	rowsA, colsA := (*m).Size()
-	rowsB, colsB := (*b).Size()
-	if colsA != rowsB {
-		msg := fmt.Sprintf(
-			"can't multiply %dx%d matrix with %dx%d matrix, size of columns and rows do not match",
-			rowsA, colsA, rowsB, colsB,
-		)
-		return nil, errors.New(msg)
-	}
-	C, _ := NewMat(uint(rowsA), uint(colsB))
-	for i := 0; i < rowsA; i++ {
-		for j := 0; j < colsB; j++ {
-			for k := 0; k < colsA; k++ {
-				C[i][j] += (*m)[i][k] * (*b)[k][j]
-			}
-		}
-	}
-	return C, nil
-}
-
 func (m *Mat) Add(b *Mat) (Mat, error) {
 	rowsA, colsA := (*m).Size()
 	rowsB, colsB := (*b).Size()
@@ -136,6 +61,37 @@ func (m *Mat) Sub(b *Mat) (Mat, error) {
 	return C, nil
 }
 
+func (m *Mat) Mult(b *Mat) (Mat, error) {
+	rowsA, colsA := (*m).Size()
+	rowsB, colsB := (*b).Size()
+	if colsA != rowsB {
+		msg := fmt.Sprintf(
+			"can't multiply %dx%d matrix with %dx%d matrix, size of columns and rows do not match",
+			rowsA, colsA, rowsB, colsB,
+		)
+		return nil, errors.New(msg)
+	}
+	C, _ := NewMat(uint(rowsA), uint(colsB))
+	for i := 0; i < rowsA; i++ {
+		for j := 0; j < colsB; j++ {
+			for k := 0; k < colsA; k++ {
+				C[i][j] += (*m)[i][k] * (*b)[k][j]
+			}
+		}
+	}
+	return C, nil
+}
+
+func (m *Mat) Transpose() Mat {
+	mT, _ := NewMat(uint(m.ColCnt()), uint(m.RowCnt()))
+	for i := range *m {
+		for j := range (*m)[i] {
+			mT[j][i] = (*m)[i][j]
+		}
+	}
+	return mT
+}
+
 func (m *Mat) Equals(b *Mat) bool {
 	rowsA, colsA := (*m).Size()
 	rowsB, colsB := (*b).Size()
@@ -155,18 +111,52 @@ func (m *Mat) Equals(b *Mat) bool {
 
 // Helper functions
 
-// ToRad is a helper function to turn radians to degree
-func ToRad(deg float64) float64 {
-	return deg * math.Pi / 180
-}
-
-// ToDeg is a helper function to turn degree to radians
-func ToDeg(rad float64) float64 {
-	return rad * 180 / math.Pi
-}
-
 func rng(min, max int) int {
 	return rand.IntN(max-min) + min
+}
+
+func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
+	rm := NewRotation(rad, axis)
+	rm.Transpose()
+	res, err := m.Mult(&rm)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (m *Mat) Translate(move Vec3) (Mat, error) {
+	tm := NewTranslation(move)
+	res, err := m.Mult(&tm)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (m *Mat) Scale(factors Vec3) (Mat, error) {
+	sm := NewScale(factors)
+	res, err := m.Mult(&sm)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (m *Mat) Fill(f float32) {
+	for i := range *m {
+		for j := range (*m)[i] {
+			(*m)[i][j] = f
+		}
+	}
+}
+
+func (m *Mat) FillRng(min float32, max float32) {
+	for i := range *m {
+		for j := range (*m)[i] {
+			(*m)[i][j] = float32(rng(int(min), int(max)))
+		}
+	}
 }
 
 // Description functions

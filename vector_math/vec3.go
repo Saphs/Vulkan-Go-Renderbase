@@ -44,12 +44,12 @@ func (v Vec3) ScalarMul(factor float32) Vec3 {
 	}
 }
 
-func (v Vec3) len() float32 {
+func (v Vec3) Len() float32 {
 	return float32(math.Sqrt(float64((v.X * v.X) + (v.Y * v.Y) + (v.Z * v.Z))))
 }
 
 func (v Vec3) Norm() Vec3 {
-	l := v.len()
+	l := v.Len()
 	return Vec3{
 		X: v.X / l,
 		Y: v.Y / l,

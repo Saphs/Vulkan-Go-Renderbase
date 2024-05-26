@@ -105,21 +105,3 @@ func NewTranslationT(t Vec3) Mat {
 	tm[3][2] = t.Z
 	return tm
 }
-
-// Apply is a hacky way to multiply a vec3 by a Mat4x4 by using a homogeneous
-// coordinate that can be specified.
-// ToDo: Replace this with a generalized Vec.Mul() function or similar
-func Apply(v Vec3, w float32, m Mat) Vec3 {
-	v4 := []float32{v.X, v.Y, v.Z, w}
-	res := make([]float32, 4)
-	for i := 0; i < m.RowCnt(); i++ {
-		for j := 0; j < m.ColCnt(); j++ {
-			res[i] = res[i] + (v4[i] * m[i][j])
-		}
-	}
-	return Vec3{
-		res[0],
-		res[1],
-		res[2],
-	}
-}

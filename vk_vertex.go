@@ -1,13 +1,14 @@
-package vector_math
+package main
 
 import (
 	vk "github.com/goki/vulkan"
+	"local/vector_math"
 	"unsafe"
 )
 
 type Vertex struct {
-	Pos   Vec3
-	Color Vec3
+	Pos   vector_math.Vec3
+	Color vector_math.Vec3
 }
 
 func GetVertexBindingDescription() vk.VertexInputBindingDescription {
