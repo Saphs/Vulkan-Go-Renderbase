@@ -2,6 +2,8 @@ package main
 
 import "C"
 import (
+	"GPU_fluid_simulation/model"
+	"GPU_fluid_simulation/tooling"
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
@@ -45,7 +47,7 @@ type Core struct {
 	inFlightFens       []vk.Fence
 
 	// Data level
-	vertices             []Vertex
+	vertices             []model.Vertex
 	vertexBuffer         vk.Buffer
 	vertexBufferMem      vk.DeviceMemory
 	vertIndices          []uint32
@@ -56,8 +58,8 @@ type Core struct {
 	uniformBuffersMapped []unsafe.Pointer
 
 	// 3D World
-	cam  *Camera
-	mesh *Mesh
+	cam  *model.Camera
+	mesh *model.Mesh
 }
 
 // Externally facing functions
@@ -72,7 +74,7 @@ func NewRenderCore() *Core {
 	return c
 }
 
-func (c *Core) SetScene(m *Mesh, cam *Camera) {
+func (c *Core) SetScene(m *model.Mesh, cam *model.Camera) {
 	c.vertices = m.Vertices
 	c.vertIndices = m.VIndices
 	c.mesh = m
@@ -278,7 +280,7 @@ func (c *Core) createSwapChain() {
 	}
 
 	var err error
-	c.swapChain, err = VkCreateSwapChain(*c.device, createInfo, nil)
+	c.swapChain, err = tooling.VkCreateSwapChain(*c.device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create swapchain due to: %s", "err")
 	}
@@ -313,7 +315,7 @@ func (c *Core) createImageViews() {
 			},
 		}
 		var err error
-		c.scImgViews[i], err = VkCreateImageView(*c.device, createInfo, nil)
+		c.scImgViews[i], err = tooling.VkCreateImageView(*c.device, createInfo, nil)
 		if err != nil {
 			log.Panicf("Failed create image view %d due to: %s", i, "err")
 		}
@@ -370,7 +372,7 @@ func (c *Core) createRenderPass() {
 		PDependencies:   []vk.SubpassDependency{dependency},
 	}
 	var err error
-	c.renderPass, err = VkCreateRenderPass(*c.device, &renderPassInfo, nil)
+	c.renderPass, err = tooling.VkCreateRenderPass(*c.device, &renderPassInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create render pass due to: %s", "err")
 	}
@@ -416,8 +418,8 @@ func (c *Core) createGraphicsPipeline() {
 		DynamicStateCount: uint32(len(dynamicStates)),
 		PDynamicStates:    dynamicStates,
 	}
-	bindingDesc := []vk.VertexInputBindingDescription{GetVertexBindingDescription()}
-	attributeDesc := GetVertexAttributeDescriptions()
+	bindingDesc := []vk.VertexInputBindingDescription{model.GetVertexBindingDescription()}
+	attributeDesc := model.GetVertexAttributeDescriptions()
 	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		PNext:                           nil,
@@ -504,7 +506,7 @@ func (c *Core) createGraphicsPipeline() {
 		PushConstantRangeCount: 0,
 		PPushConstantRanges:    nil,
 	}
-	layouts, err := VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
+	layouts, err := tooling.VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create pipeline layout")
 	}
@@ -533,7 +535,7 @@ func (c *Core) createGraphicsPipeline() {
 		BasePipelineIndex:   -1,
 	}
 	pipelineInfos := []vk.GraphicsPipelineCreateInfo{pipelineInfo}
-	pipelines, err := VkCreateGraphicsPipelines(*c.device, nil, 1, pipelineInfos, nil)
+	pipelines, err := tooling.VkCreateGraphicsPipelines(*c.device, nil, 1, pipelineInfos, nil)
 	if err != nil {
 		log.Panicf("Failed to create graphics pipeline")
 	}
@@ -560,7 +562,7 @@ func (c *Core) createFrameBuffers() {
 			Height:          c.scExtend.Height,
 			Layers:          1,
 		}
-		fb, err := VkCreateFrameBuffer(*c.device, &framebufferInfo, nil)
+		fb, err := tooling.VkCreateFrameBuffer(*c.device, &framebufferInfo, nil)
 		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
@@ -576,7 +578,7 @@ func (c *Core) createCommandPool() {
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 		QueueFamilyIndex: *c.deviceContext.qFamilies.graphicsFamily,
 	}
-	commandPool, err := VkCreateCommandPool(*c.device, &poolInfo, nil)
+	commandPool, err := tooling.VkCreateCommandPool(*c.device, &poolInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create command pool")
 	}
@@ -683,7 +685,7 @@ func (c *Core) createVertexBuffer() {
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, rawBytes(c.vertices))
+	vk.Memcopy(pData, tooling.RawBytes(c.vertices))
 	vk.UnmapMemory(*c.device, stagingBufferMem)
 
 	// Create vertex buffer
@@ -719,7 +721,7 @@ func (c *Core) createIndexBuffer() {
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, rawBytes(c.vertIndices))
+	vk.Memcopy(pData, tooling.RawBytes(c.vertIndices))
 	vk.UnmapMemory(*c.device, stagingBufferMem)
 
 	// Create vertex buffer
@@ -957,7 +959,7 @@ func (c *Core) createDescriptorSetLayout() {
 }
 
 func (c *Core) createUniformBuffers() {
-	uboBufSize := vk.DeviceSize(int(SizeOfUbo()))
+	uboBufSize := vk.DeviceSize(int(model.SizeOfUbo()))
 	log.Printf("UBO buffer size: %d Byte", uboBufSize)
 
 	c.uniformBuffers = make([]vk.Buffer, MAX_FRAMES_IN_FLIGHT)
@@ -1011,7 +1013,7 @@ func (c *Core) createDescriptorSets() {
 		bufferInfo := vk.DescriptorBufferInfo{
 			Buffer: c.uniformBuffers[i],
 			Offset: 0,
-			Range:  vk.DeviceSize(SizeOfUbo()),
+			Range:  vk.DeviceSize(model.SizeOfUbo()),
 		}
 		descriptorWrite := vk.WriteDescriptorSet{
 			SType:            vk.StructureTypeWriteDescriptorSet,
@@ -1031,10 +1033,10 @@ func (c *Core) createDescriptorSets() {
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
 	c.cam.Aspect = float32(c.scExtend.Width) / float32(c.scExtend.Height)
-	ubo := UniformBufferObject{
-		model:      c.mesh.ModelMat,
-		view:       c.cam.GetView(),
-		projection: c.cam.GetProjection(),
+	ubo := model.UniformBufferObject{
+		Model:      c.mesh.ModelMat,
+		View:       c.cam.GetView(),
+		Projection: c.cam.GetProjection(),
 	}
 	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }

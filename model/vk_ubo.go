@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"local/vector_math"
@@ -6,9 +6,9 @@ import (
 )
 
 type UniformBufferObject struct {
-	model      vector_math.Mat // 64byte (8 time 8byte words, no padding)
-	view       vector_math.Mat
-	projection vector_math.Mat // 192byte calculated size
+	Model      vector_math.Mat // 64byte (8 time 8byte words, no padding)
+	View       vector_math.Mat
+	Projection vector_math.Mat // 192byte calculated size
 }
 
 // SizeOfUbo returns size of the UniformBufferObject struct under the assumption
@@ -25,5 +25,5 @@ func toByteArr(in []float32) []byte {
 }
 
 func (u *UniformBufferObject) Bytes() []byte {
-	return append(append(toByteArr(u.model.Unroll()), toByteArr(u.view.Unroll())...), toByteArr(u.projection.Unroll())...)
+	return append(append(toByteArr(u.Model.Unroll()), toByteArr(u.View.Unroll())...), toByteArr(u.Projection.Unroll())...)
 }

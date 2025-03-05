@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	vk "github.com/goki/vulkan"

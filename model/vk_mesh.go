@@ -1,6 +1,8 @@
-package main
+package model
 
-import "local/vector_math"
+import (
+	"local/vector_math"
+)
 
 type Mesh struct {
 	Vertices []Vertex

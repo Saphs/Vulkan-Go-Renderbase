@@ -2,6 +2,7 @@ package main
 
 import "C"
 import (
+	"GPU_fluid_simulation/model"
 	"github.com/veandco/go-sdl2/sdl"
 	vm "local/vector_math"
 	"log"
@@ -43,10 +44,10 @@ func onIteration(event sdl.Event, c *Core) {
 			switch ev.Keysym.Sym {
 			case sdl.K_1:
 				var newProj int
-				if c.cam.ProjectionType == CAM_PERSPECTIVE_PROJECTION {
-					newProj = CAM_ORTHOGRAPHIC_PROJECTION
+				if c.cam.ProjectionType == model.CAM_PERSPECTIVE_PROJECTION {
+					newProj = model.CAM_ORTHOGRAPHIC_PROJECTION
 				} else {
-					newProj = CAM_PERSPECTIVE_PROJECTION
+					newProj = model.CAM_PERSPECTIVE_PROJECTION
 				}
 				log.Printf("Switching projection to -> %d", newProj)
 				c.cam.ProjectionType = newProj
@@ -88,7 +89,7 @@ func onDraw(elapsed float64, c *Core) {
 func main() {
 
 	// Expected size in memory -> 64 Byte with 4 Bytes of padding as we have 8 Byte words on a 64Bit machine
-	v := []Vertex{ // 24 * 8 = 192 Byte
+	v := []model.Vertex{ // 24 * 8 = 192 Byte
 		{ // 8 + 12 = 24 Byte [0]
 			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: -0.5}, // 12 Byte (float32 * 3, no padding)
 			Color: vm.Vec3{X: 1, Y: 0, Z: 0},          // 12 Byte (float32 * 3, no padding)
@@ -132,11 +133,11 @@ func main() {
 		3, 7, 6, 2, 3, 6, // bottom
 	}
 
-	cam := NewCamera(45, 0.1, 100)
-	cam.ProjectionType = CAM_PERSPECTIVE_PROJECTION
+	cam := model.NewCamera(45, 0.1, 100)
+	cam.ProjectionType = model.CAM_PERSPECTIVE_PROJECTION
 	cam.Move(vm.Vec3{X: 0, Z: -2})
 
-	mesh := NewMesh(v, id)
+	mesh := model.NewMesh(v, id)
 	mesh.ModelMat, _ = mesh.ModelMat.Translate(vm.Vec3{
 		X: 0,
 		Y: 0,

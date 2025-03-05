@@ -1,4 +1,4 @@
-package main
+package tooling
 
 import (
 	"errors"
@@ -23,7 +23,7 @@ func VkCreateInstance(pCreateInfo *vk.InstanceCreateInfo, pAllocator *vk.Allocat
 	return in, nil
 }
 
-func sdlCreateVkSurface(win *sdl.Window, instance vk.Instance) (vk.Surface, error) {
+func SdlCreateVkSurface(win *sdl.Window, instance vk.Instance) (vk.Surface, error) {
 	surfPtr, err := win.VulkanCreateSurface(instance)
 	if err != nil {
 		return nil, err

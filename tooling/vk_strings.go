@@ -1,4 +1,4 @@
-package main
+package tooling
 
 import (
 	"encoding/hex"
@@ -8,7 +8,7 @@ import (
 )
 
 // ExtensionProperties
-func tableStringExtensionProps(ext []vk.ExtensionProperties) string {
+func TableStringExtensionProps(ext []vk.ExtensionProperties) string {
 	strBuilder := strings.Builder{}
 	for i := range ext {
 		strBuilder.WriteString(fmt.Sprintf(" %s\n", toStringExtensionPropsTable(ext[i])))
@@ -23,7 +23,7 @@ func toStringExtensionProps(e vk.ExtensionProperties) string {
 }
 
 // LayerProperties
-func tableStringLayerProps(lay []vk.LayerProperties) string {
+func TableStringLayerProps(lay []vk.LayerProperties) string {
 	strBuilder := strings.Builder{}
 	for i := range lay {
 		strBuilder.WriteString(fmt.Sprintf(" %s\n", toStringLayerPropsTable(lay[i])))
@@ -42,7 +42,7 @@ func toStringLayerPropsTable(l vk.LayerProperties) string {
 }
 
 // Physical device
-func toStringPhysicalDeviceTable(
+func ToStringPhysicalDeviceTable(
 	pdProps vk.PhysicalDeviceProperties,
 	pdFeatures vk.PhysicalDeviceFeatures,
 	qFamilies []vk.QueueFamilyProperties,
