@@ -61,6 +61,7 @@ func onIteration(event sdl.Event, c *Core) {
 				c.cam.Pos = vm.Vec3{Z: -3}
 				c.cam.LookDir = vm.Vec3{Z: 1}
 				c.cam.LookTarget = nil
+				log.Printf("Reset camera to Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
 			case sdl.K_w:
 				c.cam.Move(vm.Vec3{Z: 1})
 			case sdl.K_a:
@@ -133,12 +134,7 @@ func main() {
 
 	cam := NewCamera(45, 0.1, 100)
 	cam.ProjectionType = CAM_PERSPECTIVE_PROJECTION
-	cam.Move(vm.Vec3{X: 2, Z: -2})
-	cam.View = NewDirectionView(
-		vm.Vec3{Y: 0.1, Z: -5},
-		vm.Vec3{-0.5, 0, 5},
-		vm.Vec3{Y: -1},
-	)
+	cam.Move(vm.Vec3{X: 0, Z: -2})
 
 	mesh := NewMesh(v, id)
 	mesh.ModelMat, _ = mesh.ModelMat.Translate(vm.Vec3{
