@@ -637,7 +637,6 @@ func (c *Core) createGraphicsPipeline() {
 	log.Printf("PipelineColorBlendStateCreateInfo: %v", colorBlendingInfo)
 
 	// Pipeline layouts are used to pass uniforms as they will be specified during pipeline creation
-	var pipelineLayout vk.PipelineLayout
 	pipelineLayoutInfo := vk.PipelineLayoutCreateInfo{
 		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
 		PNext:                  nil,
@@ -647,11 +646,11 @@ func (c *Core) createGraphicsPipeline() {
 		PushConstantRangeCount: 0,
 		PPushConstantRanges:    nil,
 	}
-	if vk.CreatePipelineLayout(c.device, &pipelineLayoutInfo, nil, &pipelineLayout) != vk.Success {
+	layouts, err := VkCreatePipelineLayout(c.device, &pipelineLayoutInfo, nil)
+	if err != nil {
 		log.Panicf("Failed to create pipeline layout")
 	}
-	c.pipelineLayout = pipelineLayout
-	log.Printf("PipelineLayout: %v", pipelineLayout)
+	c.pipelineLayout = layouts
 
 	// The actual pipeline
 	pipelineInfo := vk.GraphicsPipelineCreateInfo{
@@ -669,19 +668,19 @@ func (c *Core) createGraphicsPipeline() {
 		PDepthStencilState:  nil,
 		PColorBlendState:    &colorBlendingInfo,
 		PDynamicState:       &dynamicStateCreateInfo,
-		Layout:              pipelineLayout,
+		Layout:              c.pipelineLayout,
 		RenderPass:          c.renderPass,
 		Subpass:             0,
 		BasePipelineHandle:  nil,
 		BasePipelineIndex:   -1,
 	}
 	pipelineInfos := []vk.GraphicsPipelineCreateInfo{pipelineInfo}
-	var graphicsPipelines [1]vk.Pipeline // <- how do I allocate this correctly
-	if vk.CreateGraphicsPipelines(c.device, nil, 1, pipelineInfos, nil, graphicsPipelines[:]) != vk.Success {
+	pipelines, err := VkCreateGraphicsPipelines(c.device, nil, 1, pipelineInfos, nil)
+	if err != nil {
 		log.Panicf("Failed to create graphics pipeline")
 	}
+	c.pipelines = pipelines
 	log.Printf("Successfully created graphics pipeline")
-	c.pipelines = graphicsPipelines[:]
 
 	// As shader modules are just c thin wrapper to bring the code over to the GPU, the modules can be disposed of
 	// immediately at the end of this function.
@@ -703,11 +702,11 @@ func (c *Core) createFrameBuffers() {
 			Height:          c.scExtend.Height,
 			Layers:          1,
 		}
-		var err error
-		c.scFrameBuffers[i], err = VkCreateFrameBuffer(c.device, &framebufferInfo, nil)
+		fb, err := VkCreateFrameBuffer(c.device, &framebufferInfo, nil)
 		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
+		c.scFrameBuffers[i] = fb
 	}
 	log.Printf("Successfully created %d frame buffers %v", len(c.scFrameBuffers), c.scFrameBuffers)
 }
@@ -719,8 +718,8 @@ func (c *Core) createCommandPool() {
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 		QueueFamilyIndex: *c.qFamilies.graphicsFamily,
 	}
-	var commandPool vk.CommandPool
-	if vk.CreateCommandPool(c.device, &poolInfo, nil, &commandPool) != vk.Success {
+	commandPool, err := VkCreateCommandPool(c.device, &poolInfo, nil)
+	if err != nil {
 		log.Panicf("Failed to create command pool")
 	}
 	log.Printf("Successfully created command pool")

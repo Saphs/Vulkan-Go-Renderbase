@@ -4,22 +4,23 @@ import (
 	"errors"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
+	"log"
 )
 
 // Utility functions wrapping the raw go bindings to provide a more go-lang style interface. This should not
 // hide or alter behavior and only allow for more tidy core code by tweaking signatures.
 
 func VkCreateInstance(pCreateInfo *vk.InstanceCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.Instance, error) {
-	var instance vk.Instance
-	err := vk.Error(vk.CreateInstance(pCreateInfo, pAllocator, &instance))
+	var in vk.Instance
+	err := vk.Error(vk.CreateInstance(pCreateInfo, pAllocator, &in))
 	if err != nil {
 		return nil, err
 	}
-	err = vk.InitInstance(instance)
+	err = vk.InitInstance(in)
 	if err != nil {
 		return nil, err
 	}
-	return instance, nil
+	return in, nil
 }
 
 func sdlCreateVkSurface(win *sdl.Window, instance vk.Instance) (vk.Surface, error) {
@@ -82,4 +83,32 @@ func VkCreateFrameBuffer(device vk.Device, pCreateInfo *vk.FramebufferCreateInfo
 		return nil, err
 	}
 	return fb, nil
+}
+
+func VkCreatePipelineLayout(device vk.Device, pCreateInfo *vk.PipelineLayoutCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.PipelineLayout, error) {
+	var pl vk.PipelineLayout
+	err := vk.Error(vk.CreatePipelineLayout(device, pCreateInfo, pAllocator, &pl))
+	if err != nil {
+		return nil, err
+	}
+	return pl, nil
+}
+
+func VkCreateGraphicsPipelines(device vk.Device, pipelineCache vk.PipelineCache, createInfoCount uint32, pCreateInfos []vk.GraphicsPipelineCreateInfo, pAllocator *vk.AllocationCallbacks) ([]vk.Pipeline, error) {
+	var gp = make([]vk.Pipeline, createInfoCount)
+	err := vk.Error(vk.CreateGraphicsPipelines(device, pipelineCache, createInfoCount, pCreateInfos, pAllocator, gp))
+	if err != nil {
+		return nil, err
+	}
+	return gp, nil
+}
+
+func VkCreateCommandPool(device vk.Device, pCreateInfo *vk.CommandPoolCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.CommandPool, error) {
+	var cp vk.CommandPool
+	err := vk.Error(vk.CreateCommandPool(device, pCreateInfo, pAllocator, &cp))
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Successfully created command pool")
+	return cp, nil
 }
