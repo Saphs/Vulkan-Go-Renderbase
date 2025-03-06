@@ -79,8 +79,16 @@ func NewRenderCore() *Core {
 func (c *Core) SetScene(m *model.Mesh, cam *model.Camera) {
 	c.vertices = m.Vertices
 	c.vertIndices = m.VIndices
-	c.mesh = m
 	c.cam = cam
+}
+
+func (c *Core) FindInScene(name string) (*model.Model, error) {
+	for i, v := range c.models {
+		if v.Name == name {
+			return c.models[i], nil
+		}
+	}
+	return nil, fmt.Errorf("model '%s' not found", name)
 }
 
 func (c *Core) AddToScene(model *model.Model) {
@@ -89,6 +97,12 @@ func (c *Core) AddToScene(model *model.Model) {
 	model.VertexBuffer, model.VertexBufferMem = c.allocateVBuffer(model)
 	model.IndexBuffer, model.IndexBufferMem = c.allocateIdxBuffer(model)
 	c.models = append(c.models, model)
+}
+
+func (c *Core) ClearScene() {
+	for _, m := range c.models {
+		c.RemoveFromScene(m)
+	}
 }
 
 // RemoveFromScene drops the reference to a model found in the scene.
@@ -176,6 +190,12 @@ func (c *Core) loop(ih iterationHandler, dh drawHandler) {
 }
 
 func (c *Core) destroy() {
+	// If user has not cleaned up all models manually, warn and remove them now
+	if len(c.models) > 0 {
+		log.Printf("Leftover models in render core!: %v", len(c.models))
+		c.ClearScene()
+	}
+
 	// We need to wait for the last asynchronous call to finish before tear down
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
