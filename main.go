@@ -54,8 +54,10 @@ func onIteration(event sdl.Event, c *Core) {
 			case sdl.K_2:
 				if c.cam.LookTarget != nil {
 					c.cam.LookTarget = nil
+					log.Printf("Free camera resumed at Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
 				} else {
 					c.cam.SetTarget(vm.Vec3{})
+					log.Printf("Locked camera to Pos:%v, LookTarget:%v", c.cam.Pos, c.cam.LookTarget)
 				}
 			case sdl.K_3:
 				// Reset camera
@@ -143,13 +145,26 @@ func main() {
 		Y: 0,
 		Z: 5,
 	})
+	myModel := model.NewModel(mesh, "Cube 1")
+
+	mesh2 := model.NewMesh(v, id)
+	mesh2.ModelMat, _ = mesh2.ModelMat.Translate(vm.Vec3{
+		X: 0,
+		Y: 0,
+		Z: 0,
+	})
+	myModel2 := model.NewModel(mesh2, "Cube 2")
 
 	core := NewRenderCore()
 	core.SetScene(mesh, cam)
 	core.Initialize()
+	core.AddToScene(myModel)
+	core.AddToScene(myModel2)
 	core.loop(
 		onIteration,
 		onDraw,
 	)
+	core.RemoveFromScene(myModel)
+	core.RemoveFromScene(myModel2)
 	core.destroy()
 }

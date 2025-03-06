@@ -60,6 +60,8 @@ type Core struct {
 	// 3D World
 	cam  *model.Camera
 	mesh *model.Mesh
+
+	models []*model.Model
 }
 
 // Externally facing functions
@@ -81,6 +83,33 @@ func (c *Core) SetScene(m *model.Mesh, cam *model.Camera) {
 	c.cam = cam
 }
 
+func (c *Core) AddToScene(model *model.Model) {
+	// Careful, we set references for device memory on an object outside the Core.
+	// If the object is dereferenced we will not be able to recover this memory
+	model.VertexBuffer, model.VertexBufferMem = c.allocateVBuffer(model)
+	model.IndexBuffer, model.IndexBufferMem = c.allocateIdxBuffer(model)
+	c.models = append(c.models, model)
+}
+
+// RemoveFromScene drops the reference to a model found in the scene.
+// Comparison is done naively by name until more sophisticated methods are required.
+func (c *Core) RemoveFromScene(model *model.Model) {
+	for i, v := range c.models {
+		if v.Name == model.Name {
+			vk.DeviceWaitIdle(*c.device)
+			c.DestroyModelBuffers(model)
+			c.models = append(c.models[:i], c.models[i+1:]...)
+		}
+	}
+}
+
+func (c *Core) DestroyModelBuffers(model *model.Model) {
+	vk.DestroyBuffer(*c.device, model.VertexBuffer, nil)
+	vk.FreeMemory(*c.device, model.VertexBufferMem, nil)
+	vk.DestroyBuffer(*c.device, model.IndexBuffer, nil)
+	vk.FreeMemory(*c.device, model.IndexBufferMem, nil)
+}
+
 func (c *Core) Initialize() {
 	c.deviceContext.create()
 	c.device = &c.deviceContext.device
@@ -91,8 +120,6 @@ func (c *Core) Initialize() {
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
-	c.createVertexBuffer()
-	c.createIndexBuffer()
 	c.createUniformBuffers()
 	c.createDescriptorPool()
 	c.createDescriptorSets()
@@ -497,14 +524,19 @@ func (c *Core) createGraphicsPipeline() {
 	log.Printf("PipelineColorBlendStateCreateInfo: %v", colorBlendingInfo)
 
 	// Pipeline layouts are used to pass uniforms as they will be specified during pipeline creation
+	modelPushConstantRange := vk.PushConstantRange{
+		StageFlags: vk.ShaderStageFlags(vk.ShaderStageVertexBit),
+		Offset:     0,
+		Size:       model.ModelPushConstantsSize(),
+	}
 	pipelineLayoutInfo := vk.PipelineLayoutCreateInfo{
 		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
 		PNext:                  nil,
 		Flags:                  0,
 		SetLayoutCount:         1,
 		PSetLayouts:            []vk.DescriptorSetLayout{c.descriptorSetLayout},
-		PushConstantRangeCount: 0,
-		PPushConstantRanges:    nil,
+		PushConstantRangeCount: 1,
+		PPushConstantRanges:    []vk.PushConstantRange{modelPushConstantRange},
 	}
 	layouts, err := tooling.VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
 	if err != nil {
@@ -670,9 +702,9 @@ func (c *Core) createBuffer(size vk.DeviceSize, usage vk.BufferUsageFlags, memPr
 	return buf, deviceMem
 }
 
-func (c *Core) createVertexBuffer() {
+func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
-	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertices[0])) * len(c.vertices))
+	bufSize := vk.DeviceSize(m.GetVBufferSize())
 	stagingBuffer, stagingBufferMem := c.createBuffer(
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
@@ -685,30 +717,31 @@ func (c *Core) createVertexBuffer() {
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, tooling.RawBytes(c.vertices))
+	vk.Memcopy(pData, m.GetVBufferBytes())
 	vk.UnmapMemory(*c.device, stagingBufferMem)
 
 	// Create vertex buffer
-	c.vertexBuffer, c.vertexBufferMem = c.createBuffer(
+	vertexBuffer, vertexBufferMem := c.createBuffer(
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
 	)
 	log.Printf(
-		"Created vertex buffer handle@%v -> memAddr@%v -> Size: %d Byte",
-		c.vertexBuffer, c.vertexBufferMem, bufSize,
+		"Created vertex buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
+		m.Name, &vertexBuffer, &vertexBufferMem, bufSize,
 	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
-	c.copyBuffer(stagingBuffer, c.vertexBuffer, bufSize)
+	c.copyBuffer(stagingBuffer, vertexBuffer, bufSize)
 	vk.DestroyBuffer(*c.device, stagingBuffer, nil)
 	vk.FreeMemory(*c.device, stagingBufferMem, nil)
+
+	return vertexBuffer, vertexBufferMem
 }
 
-func (c *Core) createIndexBuffer() {
-	log.Printf("Indices: %v", c.vertIndices)
-	bufSize := vk.DeviceSize(int(unsafe.Sizeof(c.vertIndices[0])) * len(c.vertIndices))
-	log.Printf("Buffer size: %dByte", bufSize)
+func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
+	// Create staging buffer
+	bufSize := vk.DeviceSize(m.GetIdxBufferSize())
 	stagingBuffer, stagingBufferMem := c.createBuffer(
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
@@ -725,16 +758,22 @@ func (c *Core) createIndexBuffer() {
 	vk.UnmapMemory(*c.device, stagingBufferMem)
 
 	// Create vertex buffer
-	c.indexBuffer, c.indexBufferMem = c.createBuffer(
+	indexBuffer, indexBufferMem := c.createBuffer(
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageIndexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
 	)
+	log.Printf(
+		"Created index buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
+		m.Name, &indexBuffer, &indexBufferMem, bufSize,
+	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
-	c.copyBuffer(stagingBuffer, c.indexBuffer, bufSize)
+	c.copyBuffer(stagingBuffer, indexBuffer, bufSize)
 	vk.DestroyBuffer(*c.device, stagingBuffer, nil)
 	vk.FreeMemory(*c.device, stagingBufferMem, nil)
+
+	return indexBuffer, indexBufferMem
 }
 
 // copyBuffer is a subroutine that prepares a command buffer that is then executed on the device.
@@ -852,14 +891,17 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		},
 	}
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
-
-	vertBuffers := []vk.Buffer{c.vertexBuffer}
-	offsets := []vk.DeviceSize{0}
-	vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
-	vk.CmdBindIndexBuffer(buffer, c.indexBuffer, 0, vk.IndexTypeUint32)
 	vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 1, []vk.DescriptorSet{c.descriptorSets[imageIdx]}, 0, nil)
 
-	vk.CmdDrawIndexed(buffer, uint32(len(c.vertIndices)), 1, 0, 0, 0)
+	for i := range c.models {
+		vertBuffers := []vk.Buffer{c.models[i].VertexBuffer}
+		offsets := []vk.DeviceSize{0}
+		vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
+		vk.CmdBindIndexBuffer(buffer, c.models[i].IndexBuffer, 0, vk.IndexTypeUint32)
+		pPConst := tooling.UnsafeMatPtr(&c.models[i].Mesh.ModelMat)
+		vk.CmdPushConstants(buffer, c.pipelineLayout, vk.ShaderStageFlags(vk.ShaderStageVertexBit), 0, model.ModelPushConstantsSize(), pPConst)
+		vk.CmdDrawIndexed(buffer, uint32(len(c.models[i].Mesh.VIndices)), 1, 0, 0, 0)
+	}
 
 	vk.CmdEndRenderPass(buffer)
 	if vk.EndCommandBuffer(buffer) != vk.Success {
@@ -1034,7 +1076,6 @@ func (c *Core) createDescriptorSets() {
 func (c *Core) updateUniformBuffer(frameIdx int32) {
 	c.cam.Aspect = float32(c.scExtend.Width) / float32(c.scExtend.Height)
 	ubo := model.UniformBufferObject{
-		Model:      c.mesh.ModelMat,
 		View:       c.cam.GetView(),
 		Projection: c.cam.GetProjection(),
 	}

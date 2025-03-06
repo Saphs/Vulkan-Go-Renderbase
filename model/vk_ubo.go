@@ -1,12 +1,11 @@
 package model
 
 import (
+	"GPU_fluid_simulation/tooling"
 	"local/vector_math"
-	"unsafe"
 )
 
 type UniformBufferObject struct {
-	Model      vector_math.Mat // 64byte (8 time 8byte words, no padding)
 	View       vector_math.Mat
 	Projection vector_math.Mat // 192byte calculated size
 }
@@ -17,13 +16,9 @@ type UniformBufferObject struct {
 // fixed arrays instead of slices.
 func SizeOfUbo() uintptr {
 	m, _ := vector_math.NewMat(4, 4)
-	return uintptr(m.ByteSize() * 3)
-}
-
-func toByteArr(in []float32) []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(&in[0])), len(in)*4)
+	return uintptr(m.ByteSize() * 2)
 }
 
 func (u *UniformBufferObject) Bytes() []byte {
-	return append(append(toByteArr(u.Model.Unroll()), toByteArr(u.View.Unroll())...), toByteArr(u.Projection.Unroll())...)
+	return append(append(tooling.ToByteArr(u.View.Unroll())), tooling.ToByteArr(u.Projection.Unroll())...)
 }

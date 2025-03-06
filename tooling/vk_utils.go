@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"local/vector_math"
 	"unsafe"
 )
 
@@ -36,6 +37,15 @@ func RawBytes(p interface{}) []byte {
 		fmt.Println("binary.Write failed:", err)
 	}
 	return buf.Bytes()
+}
+
+// ToByteArr drops type reference from float array to allow Go to pass an unsafe.Pointer to Vulkan
+func ToByteArr(in []float32) []byte {
+	return unsafe.Slice((*byte)(unsafe.Pointer(&in[0])), len(in)*4)
+}
+
+func UnsafeMatPtr(m *vector_math.Mat) unsafe.Pointer {
+	return unsafe.Pointer(&ToByteArr(m.Unroll())[0])
 }
 
 // TerminatedStr ensures the given string is \x00 terminated as vulkan expects this in certain structs
