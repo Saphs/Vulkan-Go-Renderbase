@@ -105,109 +105,11 @@ func onDraw(elapsed float64, c *Core) {
 }
 
 func main() {
-
-	// Expected size in memory -> 64 Byte with 4 Bytes of padding as we have 8 Byte words on a 64Bit machine
-	v1 := []model.Vertex{ // 24 * 8 = 192 Byte
-		{ // 8 + 12 = 24 Byte [0]
-			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: -0.5}, // 12 Byte (float32 * 3, no padding)
-			Color: vm.Vec3{X: 1, Y: 0, Z: 0},          // 12 Byte (float32 * 3, no padding)
-		},
-		{ // [1]
-			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: -0.5},
-			Color: vm.Vec3{X: 0, Y: 1, Z: 0},
-		},
-		{ // [2]
-			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: -0.5},
-			Color: vm.Vec3{X: 0, Y: 0, Z: 1},
-		},
-		{ // [3]
-			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: -0.5},
-			Color: vm.Vec3{X: 1, Y: 0.5, Z: 1},
-		},
-		{ // 8 + 12 = 20 Byte [4]
-			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: 0.5}, // 12 Byte (float32 * 3, no padding)
-			Color: vm.Vec3{X: 1, Y: 0.5, Z: 0.5},     // 12 Byte (float32 * 3, no padding)
-		},
-		{ // [5]
-			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: 0.5},
-			Color: vm.Vec3{X: 0.5, Y: 1, Z: 0.5},
-		},
-		{ // [6]
-			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5},
-			Color: vm.Vec3{X: 0.5, Y: 0.5, Z: 1},
-		},
-		{ // [7]
-			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: 0.5},
-			Color: vm.Vec3{X: 0, Y: 0.5, Z: 0},
-		},
-	}
-
-	v2 := []model.Vertex{ // 24 * 8 = 192 Byte
-		{ // 8 + 12 = 24 Byte [0]
-			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: -0.5}, // 12 Byte (float32 * 3, no padding)
-			Color: vm.Vec3{X: 1, Y: 1, Z: 0},          // 12 Byte (float32 * 3, no padding)
-		},
-		{ // [1]
-			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: -0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 0},
-		},
-		{ // [2]
-			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: -0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 1},
-		},
-		{ // [3]
-			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: -0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 1},
-		},
-		{ // 8 + 12 = 20 Byte [4]
-			Pos:   vm.Vec3{X: -0.5, Y: -0.5, Z: 0.5}, // 12 Byte (float32 * 3, no padding)
-			Color: vm.Vec3{X: 1, Y: 1, Z: 0.5},       // 12 Byte (float32 * 3, no padding)
-		},
-		{ // [5]
-			Pos:   vm.Vec3{X: 0.5, Y: -0.5, Z: 0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 0.5},
-		},
-		{ // [6]
-			Pos:   vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 1},
-		},
-		{ // [7]
-			Pos:   vm.Vec3{X: -0.5, Y: 0.5, Z: 0.5},
-			Color: vm.Vec3{X: 1, Y: 1, Z: 0},
-		},
-	}
-
-	id := []uint32{
-		2, 1, 0, 0, 3, 2, // front
-		5, 1, 6, 1, 2, 6, // right
-		4, 5, 6, 7, 4, 6, // back
-		4, 7, 0, 0, 7, 3, // left
-		0, 1, 5, 5, 4, 0, // top
-		3, 7, 6, 2, 3, 6, // bottom
-	}
-
-	cam := model.NewCamera(45, 0.1, 100)
-	cam.ProjectionType = model.CAM_PERSPECTIVE_PROJECTION
-	cam.Move(vm.Vec3{X: 0, Z: -2})
-
-	mesh := model.NewMesh(v1, id)
-	mesh.ModelMat, _ = mesh.ModelMat.Translate(vm.Vec3{
-		X: 0,
-		Y: 0,
-		Z: 5,
-	})
-	myModel := model.NewModel(mesh, "Cube 1")
-
-	mesh2 := model.NewMesh(v2, id)
-	mesh2.ModelMat, _ = mesh2.ModelMat.Translate(vm.Vec3{
-		X: 0,
-		Y: 0,
-		Z: 10,
-	})
-	myModel2 := model.NewModel(mesh2, "Cube 2")
+	myModel := model.NewCubeModel("Cube 1")
+	myModel2 := model.NewCubeModel("Cube 2")
 
 	core := NewRenderCore()
-	core.SetScene(mesh, cam)
+	core.DefaultCam()
 	core.Initialize()
 	core.AddToScene(myModel)
 	core.AddToScene(myModel2)

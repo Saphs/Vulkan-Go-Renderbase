@@ -7,6 +7,7 @@ import (
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
+	vm "local/vector_math"
 	"log"
 	"math"
 	"time"
@@ -47,20 +48,12 @@ type Core struct {
 	inFlightFens       []vk.Fence
 
 	// Data level
-	vertices             []model.Vertex
-	vertexBuffer         vk.Buffer
-	vertexBufferMem      vk.DeviceMemory
-	vertIndices          []uint32
-	indexBuffer          vk.Buffer
-	indexBufferMem       vk.DeviceMemory
 	uniformBuffers       []vk.Buffer
 	uniformBufferMems    []vk.DeviceMemory
 	uniformBuffersMapped []unsafe.Pointer
 
 	// 3D World
-	cam  *model.Camera
-	mesh *model.Mesh
-
+	cam    *model.Camera
 	models []*model.Model
 }
 
@@ -76,9 +69,10 @@ func NewRenderCore() *Core {
 	return c
 }
 
-func (c *Core) SetScene(m *model.Mesh, cam *model.Camera) {
-	c.vertices = m.Vertices
-	c.vertIndices = m.VIndices
+func (c *Core) DefaultCam() {
+	cam := model.NewCamera(45, 0.1, 100)
+	cam.ProjectionType = model.CAM_PERSPECTIVE_PROJECTION
+	cam.Move(vm.Vec3{X: 0, Z: -2})
 	c.cam = cam
 }
 
@@ -207,10 +201,6 @@ func (c *Core) destroy() {
 	}
 	vk.DestroyDescriptorPool(*c.device, c.descriptorPool, nil)
 	vk.DestroyDescriptorSetLayout(*c.device, c.descriptorSetLayout, nil)
-	vk.DestroyBuffer(*c.device, c.vertexBuffer, nil)
-	vk.FreeMemory(*c.device, c.vertexBufferMem, nil)
-	vk.DestroyBuffer(*c.device, c.indexBuffer, nil)
-	vk.FreeMemory(*c.device, c.indexBufferMem, nil)
 
 	// Destroy all infrastructure up to the sdl window
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
@@ -774,7 +764,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, tooling.RawBytes(c.vertIndices))
+	vk.Memcopy(pData, tooling.RawBytes(m.Mesh.VIndices))
 	vk.UnmapMemory(*c.device, stagingBufferMem)
 
 	// Create vertex buffer
