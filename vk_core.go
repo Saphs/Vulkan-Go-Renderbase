@@ -40,6 +40,8 @@ type Core struct {
 	scFrameBuffers      []vk.Framebuffer
 	commandPool         vk.CommandPool
 
+	// DepthBuffer
+
 	// Frame level
 	commandBuffers     []vk.CommandBuffer
 	currentFrameIdx    int32
@@ -360,6 +362,78 @@ func (c *Core) createImageViews() {
 	log.Printf("Successfully created %d image views %v", len(c.scImgViews), c.scImgViews)
 }
 
+func (c *Core) createImage(w uint32, h uint32, format vk.Format, tiling vk.ImageTiling, usage vk.ImageUsageFlags, props vk.MemoryPropertyFlags) {
+	imageInfo := &vk.ImageCreateInfo{
+		SType:     vk.StructureTypeImageCreateInfo,
+		PNext:     nil,
+		Flags:     0,
+		ImageType: vk.ImageType2d,
+		Format:    format,
+		Extent: vk.Extent3D{
+			Width:  w,
+			Height: h,
+			Depth:  1,
+		},
+		MipLevels:             1,
+		ArrayLayers:           1,
+		Samples:               vk.SampleCount1Bit,
+		Tiling:                tiling,
+		Usage:                 usage,
+		SharingMode:           vk.SharingModeExclusive,
+		QueueFamilyIndexCount: 0,
+		PQueueFamilyIndices:   nil,
+		InitialLayout:         vk.ImageLayoutUndefined,
+	}
+	var img vk.Image
+	if vk.CreateImage(*c.device, imageInfo, nil, &img) != vk.Success {
+		log.Panicf("failed to create image!")
+	}
+	var memRequirements vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(*c.device, img, &memRequirements)
+
+	allocInfo := &vk.MemoryAllocateInfo{
+		SType:           vk.StructureTypeMemoryAllocateInfo,
+		PNext:           nil,
+		AllocationSize:  memRequirements.Size,
+		MemoryTypeIndex: c.findMemoryType(memRequirements.MemoryTypeBits, props),
+	}
+	var imgMemory vk.DeviceMemory
+	if vk.AllocateMemory(*c.device, allocInfo, nil, &imgMemory) != vk.Success {
+		log.Panicf("failed to allocate device memory for image!")
+	}
+
+	vk.BindImageMemory(*c.device, img, imgMemory, 0)
+}
+
+func (c *Core) depthBuffer() {
+	//depthFormat := c.findDepthFormat()
+}
+
+func hasStencilComponent(format vk.Format) bool {
+	return format == vk.FormatD32SfloatS8Uint || format == vk.FormatD24UnormS8Uint
+}
+
+func (c *Core) findDepthFormat() vk.Format {
+	return c.findSupportedFormat(
+		[]vk.Format{vk.FormatD32Sfloat, vk.FormatD32SfloatS8Uint, vk.FormatD24UnormS8Uint},
+		vk.ImageTilingOptimal,
+		vk.FormatFeatureFlags(vk.FormatFeatureDepthStencilAttachmentBit),
+	)
+}
+
+func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
+	for _, format := range candidates {
+		var props vk.FormatProperties
+		vk.GetPhysicalDeviceFormatProperties(c.deviceContext.physicalDevice, format, &props)
+		if tiling == vk.ImageTilingLinear && (props.LinearTilingFeatures&features) == features {
+			return format
+		} else if tiling == vk.ImageTilingOptimal && (props.OptimalTilingFeatures&features) == features {
+			return format
+		}
+	}
+	panic("No supported format found")
+}
+
 func (c *Core) createRenderPass() {
 	colorAttachment := vk.AttachmentDescription{
 		Flags:          0,
@@ -417,30 +491,9 @@ func (c *Core) createRenderPass() {
 }
 
 func (c *Core) createGraphicsPipeline() {
-	vertShaderMod := readShaderCode(*c.device, "shaders_spv/vert.spv")
-	log.Printf("Loaded vertex shader: %v", vertShaderMod)
-	fragShaderMod := readShaderCode(*c.device, "shaders_spv/frag.spv")
-	log.Printf("Loaded fragment shader: %v", fragShaderMod)
-
-	vertexShaderStageInfo := vk.PipelineShaderStageCreateInfo{
-		SType:               vk.StructureTypePipelineShaderStageCreateInfo,
-		PNext:               nil,
-		Flags:               0,
-		Stage:               vk.ShaderStageVertexBit,
-		Module:              vertShaderMod,
-		PName:               "main\x00", // entrypoint -> function name in the shader
-		PSpecializationInfo: nil,
-	}
-	fragmentShaderStageInfo := vk.PipelineShaderStageCreateInfo{
-		SType:               vk.StructureTypePipelineShaderStageCreateInfo,
-		PNext:               nil,
-		Flags:               0,
-		Stage:               vk.ShaderStageFragmentBit,
-		Module:              fragShaderMod,
-		PName:               "main\x00", // entrypoint -> function name in the shader
-		PSpecializationInfo: nil,
-	}
-	shaderStages := []vk.PipelineShaderStageCreateInfo{vertexShaderStageInfo, fragmentShaderStageInfo}
+	vertShaderMod, vertStageInfo := LoadVert(*c.device, "shaders_spv/vert.spv")
+	fragShaderMod, fragStageInfo := LoadFrag(*c.device, "shaders_spv/frag.spv")
+	shaderStages := []vk.PipelineShaderStageCreateInfo{vertStageInfo, fragStageInfo}
 	log.Printf("Prepared %d shader stages for pipeline creation: %v", len(shaderStages), shaderStages)
 
 	// Dynamic state
@@ -584,10 +637,9 @@ func (c *Core) createGraphicsPipeline() {
 	c.pipelines = pipelines
 	log.Printf("Successfully created graphics pipeline")
 
-	// As shader modules are just c thin wrapper to bring the code over to the GPU, the modules can be disposed of
-	// immediately at the end of this function.
-	vk.DestroyShaderModule(*c.device, vertShaderMod, nil)
-	vk.DestroyShaderModule(*c.device, fragShaderMod, nil)
+	// Explicitly done right after pipeline creation
+	DeleteShaderMod(*c.device, vertShaderMod)
+	DeleteShaderMod(*c.device, fragShaderMod)
 }
 
 func (c *Core) createFrameBuffers() {

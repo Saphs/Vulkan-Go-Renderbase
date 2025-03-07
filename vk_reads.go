@@ -1,10 +1,8 @@
 package main
 
 import (
-	"GPU_fluid_simulation/tooling"
 	vk "github.com/goki/vulkan"
 	"log"
-	"os"
 )
 
 // Read operations that require duplicated function calls, allocations and dereferencing. It is pulled out to
@@ -131,28 +129,6 @@ func readSwapChainImages(device vk.Device, swapChain vk.Swapchain) []vk.Image {
 	imgs := make([]vk.Image, imgCount)
 	vk.GetSwapchainImages(device, swapChain, &imgCount, imgs)
 	return imgs
-}
-
-func readShaderCode(device vk.Device, shaderFile string) vk.ShaderModule {
-	shaderCodeB, err := os.ReadFile(shaderFile)
-	shaderCodeLen := uint64(len(shaderCodeB))
-	if err != nil {
-		log.Panicf("Failed to read shader file: '%s' due to: %v", shaderFile, err)
-	}
-	log.Printf("Read shader file (%s) of size: %dByte", shaderFile, shaderCodeLen)
-
-	createInfo := &vk.ShaderModuleCreateInfo{
-		SType:    vk.StructureTypeShaderModuleCreateInfo,
-		PNext:    nil,
-		Flags:    0,
-		CodeSize: shaderCodeLen,
-		PCode:    tooling.AsUint32Arr(shaderCodeB),
-	}
-	var shaderModule vk.ShaderModule
-	if vk.CreateShaderModule(device, createInfo, nil, &shaderModule) != vk.Success {
-		log.Panicf("Failed to create shader module: '%s'", shaderFile)
-	}
-	return shaderModule
 }
 
 func readDeviceMemoryProperties(pd vk.PhysicalDevice) vk.PhysicalDeviceMemoryProperties {
