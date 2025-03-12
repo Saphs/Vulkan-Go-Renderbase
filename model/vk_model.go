@@ -34,7 +34,9 @@ func ModelPushConstantsSize() uint32 {
 // GetVBufferSize returns the size required for keeping this model in device memory.
 // Mainly used to determine the buffer size when calling in Code.createBuffer(size vk.DeviceSize, ...)
 func (m *Model) GetVBufferSize() int {
-	return int(unsafe.Sizeof(m.Mesh.Vertices)) * len(m.Mesh.Vertices)
+	// ToDo: Fix non-performant workaround, the calculation of the size should be fast and simple but the old on didnt work
+	// old one -> return int(unsafe.Sizeof(m.Mesh.Vertices)) * len(m.Mesh.Vertices)
+	return len(tooling.RawBytes(m.Mesh.Vertices))
 }
 
 // GetVBufferBytes returns the raw bytes representing all vertices for this model.

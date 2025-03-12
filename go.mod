@@ -8,6 +8,7 @@ require (
 	github.com/goki/vulkan v1.0.7
 	github.com/veandco/go-sdl2 v0.4.38
 	local/vector_math v0.0.0-00010101000000-000000000000
+	neilpa.me/go-stbi v1.1.0
 )
 
 replace local/vector_math => ./vector_math

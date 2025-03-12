@@ -17,6 +17,7 @@ type DeviceContext struct {
 
 	physicalDevice vk.PhysicalDevice
 	pdMemoryProps  vk.PhysicalDeviceMemoryProperties
+	pdProps        vk.PhysicalDeviceProperties
 	qFamilies      QueueFamilyIndices
 
 	device    vk.Device
@@ -30,11 +31,15 @@ func NewDeviceContext(w *sdl.Window) *DeviceContext {
 	}
 }
 
-func (dc *DeviceContext) create() {
+// init call all required creation methods to start using a vk.Device capable of rendering graphics
+// to a window created by SDL. It returns the associated vk.Device that was just selected as a pointer
+// reference for convenience.
+func (dc *DeviceContext) init() *vk.Device {
 	dc.createInstance()
 	dc.createSurface()
 	dc.selectPhysicalDevice()
 	dc.createLogicalDevice()
+	return &dc.device
 }
 
 // destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
@@ -111,6 +116,9 @@ func (dc *DeviceContext) selectPhysicalDevice() {
 		log.Panicf("Failed to read queue families from selected device due to: %s", err)
 	}
 	dc.qFamilies = *qf
+	dc.pdProps = readPhysicalDeviceProperties(dc.physicalDevice)
+	// this is the easiest spot to deref this at the moment
+	dc.pdProps.Limits.Deref()
 	dc.pdMemoryProps = readDeviceMemoryProperties(dc.physicalDevice)
 }
 
@@ -129,7 +137,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
 
 	queuesSupported := indices.isAllQueuesFound()
 	isDiscreteGPU := pdProps.DeviceType == vk.PhysicalDeviceTypeDiscreteGpu
-	featuresSupported := pdFeatures.GeometryShader == 1
+	featuresSupported := pdFeatures.GeometryShader == vk.True && pdFeatures.SamplerAnisotropy == vk.True
 	extensionsSupported := checkDeviceExtensionSupport(pd, DEVICE_EXTENSIONS)
 
 	isSwapChainAdequate := false
@@ -142,7 +150,9 @@ func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
 
 func (dc *DeviceContext) createLogicalDevice() {
 	queueInfos := dc.qFamilies.toQueueCreateInfos()
-	deviceFeatures := vk.PhysicalDeviceFeatures{} // Empty for now as we dont need anything special at the moment
+	deviceFeatures := vk.PhysicalDeviceFeatures{ // We explicitly enable anisotropic sampling, more interesting stuff could be added here
+		SamplerAnisotropy: vk.True,
+	}
 	deviceCreatInfo := &vk.DeviceCreateInfo{
 		SType:                   vk.StructureTypeDeviceCreateInfo,
 		PNext:                   nil,

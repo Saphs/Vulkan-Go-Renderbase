@@ -150,3 +150,10 @@ func readBufferMemoryRequirements(device vk.Device, b vk.Buffer) vk.MemoryRequir
 	memRequirements.Deref()
 	return memRequirements
 }
+
+func readImageMemoryRequirements(device vk.Device, img vk.Image) vk.MemoryRequirements {
+	var memRequirements vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(device, img, &memRequirements)
+	memRequirements.Deref()
+	return memRequirements
+}

@@ -10,6 +10,7 @@ import (
 	vm "local/vector_math"
 	"log"
 	"math"
+	"neilpa.me/go-stbi"
 	"time"
 	"unsafe"
 )
@@ -57,6 +58,11 @@ type Core struct {
 	// 3D World
 	cam    *model.Camera
 	models []*model.Model
+
+	textureImage     vk.Image
+	textureImageMem  vk.DeviceMemory
+	textureImageView vk.ImageView
+	textureSampler   vk.Sampler
 }
 
 // Externally facing functions
@@ -121,8 +127,7 @@ func (c *Core) DestroyModelBuffers(model *model.Model) {
 }
 
 func (c *Core) Initialize() {
-	c.deviceContext.create()
-	c.device = &c.deviceContext.device
+	c.device = c.deviceContext.init()
 	c.createSwapChain()
 	c.createImageViews()
 	c.createRenderPass()
@@ -130,6 +135,9 @@ func (c *Core) Initialize() {
 	c.createGraphicsPipeline()
 	c.createFrameBuffers()
 	c.createCommandPool()
+	c.createTexture()
+	c.createTextureViews()
+	c.createTextureSampler()
 	c.createUniformBuffers()
 	c.createDescriptorPool()
 	c.createDescriptorSets()
@@ -195,6 +203,11 @@ func (c *Core) destroy() {
 	// We need to wait for the last asynchronous call to finish before tear down
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
+
+	vk.DestroySampler(*c.device, c.textureSampler, nil)
+	vk.DestroyImageView(*c.device, c.textureImageView, nil)
+	vk.DestroyImage(*c.device, c.textureImage, nil)
+	vk.FreeMemory(*c.device, c.textureImageMem, nil)
 
 	// Destroy all buffers (application data)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
@@ -329,109 +342,41 @@ func (c *Core) createSwapChain() {
 	log.Printf("Read resulting image handles: %v", c.scImages)
 }
 
+func (c *Core) createImageView(image vk.Image, format vk.Format) vk.ImageView {
+	createInfo := &vk.ImageViewCreateInfo{
+		SType:    vk.StructureTypeImageViewCreateInfo,
+		PNext:    nil,
+		Flags:    0,
+		Image:    image,
+		ViewType: vk.ImageViewType2d,
+		Format:   format,
+		Components: vk.ComponentMapping{
+			R: vk.ComponentSwizzleIdentity,
+			G: vk.ComponentSwizzleIdentity,
+			B: vk.ComponentSwizzleIdentity,
+			A: vk.ComponentSwizzleIdentity,
+		},
+		SubresourceRange: vk.ImageSubresourceRange{
+			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			BaseMipLevel:   0,
+			LevelCount:     1,
+			BaseArrayLayer: 0,
+			LayerCount:     1,
+		},
+	}
+	imgView, err := tooling.VkCreateImageView(*c.device, createInfo, nil)
+	if err != nil {
+		log.Panicf("Failed create image view due to: %s", err)
+	}
+	return imgView
+}
+
 func (c *Core) createImageViews() {
 	c.scImgViews = make([]vk.ImageView, len(c.scImages))
 	for i := range c.scImages {
-		createInfo := &vk.ImageViewCreateInfo{
-			SType:    vk.StructureTypeImageViewCreateInfo,
-			PNext:    nil,
-			Flags:    0,
-			Image:    c.scImages[i],
-			ViewType: vk.ImageViewType2d,
-			Format:   c.scFormat.Format,
-			Components: vk.ComponentMapping{
-				R: vk.ComponentSwizzleIdentity,
-				G: vk.ComponentSwizzleIdentity,
-				B: vk.ComponentSwizzleIdentity,
-				A: vk.ComponentSwizzleIdentity,
-			},
-			SubresourceRange: vk.ImageSubresourceRange{
-				AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
-				BaseMipLevel:   0,
-				LevelCount:     1,
-				BaseArrayLayer: 0,
-				LayerCount:     1,
-			},
-		}
-		var err error
-		c.scImgViews[i], err = tooling.VkCreateImageView(*c.device, createInfo, nil)
-		if err != nil {
-			log.Panicf("Failed create image view %d due to: %s", i, "err")
-		}
+		c.scImgViews[i] = c.createImageView(c.scImages[i], c.scFormat.Format)
 	}
 	log.Printf("Successfully created %d image views %v", len(c.scImgViews), c.scImgViews)
-}
-
-func (c *Core) createImage(w uint32, h uint32, format vk.Format, tiling vk.ImageTiling, usage vk.ImageUsageFlags, props vk.MemoryPropertyFlags) {
-	imageInfo := &vk.ImageCreateInfo{
-		SType:     vk.StructureTypeImageCreateInfo,
-		PNext:     nil,
-		Flags:     0,
-		ImageType: vk.ImageType2d,
-		Format:    format,
-		Extent: vk.Extent3D{
-			Width:  w,
-			Height: h,
-			Depth:  1,
-		},
-		MipLevels:             1,
-		ArrayLayers:           1,
-		Samples:               vk.SampleCount1Bit,
-		Tiling:                tiling,
-		Usage:                 usage,
-		SharingMode:           vk.SharingModeExclusive,
-		QueueFamilyIndexCount: 0,
-		PQueueFamilyIndices:   nil,
-		InitialLayout:         vk.ImageLayoutUndefined,
-	}
-	var img vk.Image
-	if vk.CreateImage(*c.device, imageInfo, nil, &img) != vk.Success {
-		log.Panicf("failed to create image!")
-	}
-	var memRequirements vk.MemoryRequirements
-	vk.GetImageMemoryRequirements(*c.device, img, &memRequirements)
-
-	allocInfo := &vk.MemoryAllocateInfo{
-		SType:           vk.StructureTypeMemoryAllocateInfo,
-		PNext:           nil,
-		AllocationSize:  memRequirements.Size,
-		MemoryTypeIndex: c.findMemoryType(memRequirements.MemoryTypeBits, props),
-	}
-	var imgMemory vk.DeviceMemory
-	if vk.AllocateMemory(*c.device, allocInfo, nil, &imgMemory) != vk.Success {
-		log.Panicf("failed to allocate device memory for image!")
-	}
-
-	vk.BindImageMemory(*c.device, img, imgMemory, 0)
-}
-
-func (c *Core) depthBuffer() {
-	//depthFormat := c.findDepthFormat()
-}
-
-func hasStencilComponent(format vk.Format) bool {
-	return format == vk.FormatD32SfloatS8Uint || format == vk.FormatD24UnormS8Uint
-}
-
-func (c *Core) findDepthFormat() vk.Format {
-	return c.findSupportedFormat(
-		[]vk.Format{vk.FormatD32Sfloat, vk.FormatD32SfloatS8Uint, vk.FormatD24UnormS8Uint},
-		vk.ImageTilingOptimal,
-		vk.FormatFeatureFlags(vk.FormatFeatureDepthStencilAttachmentBit),
-	)
-}
-
-func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
-	for _, format := range candidates {
-		var props vk.FormatProperties
-		vk.GetPhysicalDeviceFormatProperties(c.deviceContext.physicalDevice, format, &props)
-		if tiling == vk.ImageTilingLinear && (props.LinearTilingFeatures&features) == features {
-			return format
-		} else if tiling == vk.ImageTilingOptimal && (props.OptimalTilingFeatures&features) == features {
-			return format
-		}
-	}
-	panic("No supported format found")
 }
 
 func (c *Core) createRenderPass() {
@@ -509,7 +454,9 @@ func (c *Core) createGraphicsPipeline() {
 		PDynamicStates:    dynamicStates,
 	}
 	bindingDesc := []vk.VertexInputBindingDescription{model.GetVertexBindingDescription()}
+
 	attributeDesc := model.GetVertexAttributeDescriptions()
+	log.Printf("attributeDesc: %v", attributeDesc)
 	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		PNext:                           nil,
@@ -723,51 +670,11 @@ func (c *Core) createSyncObjects() {
 	c.inFlightFens = iff
 }
 
-func (c *Core) createBuffer(size vk.DeviceSize, usage vk.BufferUsageFlags, memProperties vk.MemoryPropertyFlags) (vk.Buffer, vk.DeviceMemory) {
-	// Buffer handle of fitting size
-	bufferInfo := vk.BufferCreateInfo{
-		SType:                 vk.StructureTypeBufferCreateInfo,
-		PNext:                 nil,
-		Flags:                 0,
-		Size:                  size,
-		Usage:                 usage,
-		SharingMode:           vk.SharingModeExclusive,
-		QueueFamilyIndexCount: 0,
-		PQueueFamilyIndices:   nil,
-	}
-	var buf vk.Buffer
-	err := vk.Error(vk.CreateBuffer(*c.device, &bufferInfo, nil, &buf))
-	if err != nil {
-		log.Panicf("Failed to create vertex buffer")
-	}
-	bufRequirements := readBufferMemoryRequirements(*c.device, buf)
-
-	// Allocate device memory
-	allocInfo := vk.MemoryAllocateInfo{
-		SType:           vk.StructureTypeMemoryAllocateInfo,
-		PNext:           nil,
-		AllocationSize:  bufRequirements.Size,
-		MemoryTypeIndex: c.findMemoryType(bufRequirements.MemoryTypeBits, memProperties),
-	}
-	var deviceMem vk.DeviceMemory
-	err = vk.Error(vk.AllocateMemory(*c.device, &allocInfo, nil, &deviceMem))
-	if err != nil {
-		log.Panicf("Failed to allocate vertex buffer memory")
-	}
-
-	// Associate allocated memory with buffer handle
-	err = vk.Error(vk.BindBufferMemory(*c.device, buf, deviceMem, 0))
-	if err != nil {
-		log.Panicf("Failed to bind device memory to buffer handle")
-	}
-
-	return buf, deviceMem
-}
-
 func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetVBufferSize())
-	stagingBuffer, stagingBufferMem := c.createBuffer(
+	stgBuf := CreateBuffer(
+		c.deviceContext,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
@@ -775,36 +682,38 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(*c.device, stagingBufferMem, 0, bufSize, 0, &pData))
+	err := vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, m.GetVBufferBytes())
-	vk.UnmapMemory(*c.device, stagingBufferMem)
+	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
 
 	// Create vertex buffer
-	vertexBuffer, vertexBufferMem := c.createBuffer(
+	vertBuf := CreateBuffer(
+		c.deviceContext,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
 	)
 	log.Printf(
 		"Created vertex buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
-		m.Name, &vertexBuffer, &vertexBufferMem, bufSize,
+		m.Name, &vertBuf.handle, &vertBuf.deviceMem, bufSize,
 	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
-	c.copyBuffer(stagingBuffer, vertexBuffer, bufSize)
-	vk.DestroyBuffer(*c.device, stagingBuffer, nil)
-	vk.FreeMemory(*c.device, stagingBufferMem, nil)
+	c.copyBuffer(stgBuf, vertBuf, bufSize)
+	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
+	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
 
-	return vertexBuffer, vertexBufferMem
+	return vertBuf.handle, vertBuf.deviceMem
 }
 
 func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetIdxBufferSize())
-	stagingBuffer, stagingBufferMem := c.createBuffer(
+	stgBuf := CreateBuffer(
+		c.deviceContext,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
@@ -812,36 +721,129 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(*c.device, stagingBufferMem, 0, bufSize, 0, &pData))
+	err := vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, tooling.RawBytes(m.Mesh.VIndices))
-	vk.UnmapMemory(*c.device, stagingBufferMem)
+	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
 
 	// Create vertex buffer
-	indexBuffer, indexBufferMem := c.createBuffer(
+	idxBuf := CreateBuffer(
+		c.deviceContext,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageIndexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
 	)
 	log.Printf(
 		"Created index buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
-		m.Name, &indexBuffer, &indexBufferMem, bufSize,
+		m.Name, &idxBuf.handle, &idxBuf.deviceMem, bufSize,
 	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
-	c.copyBuffer(stagingBuffer, indexBuffer, bufSize)
-	vk.DestroyBuffer(*c.device, stagingBuffer, nil)
-	vk.FreeMemory(*c.device, stagingBufferMem, nil)
+	c.copyBuffer(stgBuf, idxBuf, bufSize)
+	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
+	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
 
-	return indexBuffer, indexBufferMem
+	return idxBuf.handle, idxBuf.deviceMem
 }
 
-// copyBuffer is a subroutine that prepares a command buffer that is then executed on the device.
+func (c *Core) copyBuffer(src *Buffer, dst *Buffer, s vk.DeviceSize) {
+	c.copyVkBuffer(src.handle, dst.handle, s)
+}
+
+// copyVkBuffer is a subroutine that prepares a command buffer that is then executed on the device.
 // The command buffer is allocated, records the copy command and is submitted to the device. After idle
 // the command buffer is freed.
-func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
+func (c *Core) copyVkBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
+	cmdBuf := c.beginSingleTimeCommands()
+	copyRegions := []vk.BufferCopy{
+		{
+			SrcOffset: 0,
+			DstOffset: 0,
+			Size:      s,
+		},
+	}
+	vk.CmdCopyBuffer(cmdBuf, src, dst, 1, copyRegions)
+	c.endSingleTimeCommands(cmdBuf)
+}
+
+func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.ImageLayout, new vk.ImageLayout) {
+	cmdBuf := c.beginSingleTimeCommands()
+
+	var srcStage vk.PipelineStageFlags
+	var dstStage vk.PipelineStageFlags
+	barrier := vk.ImageMemoryBarrier{
+		SType:               vk.StructureTypeImageMemoryBarrier,
+		PNext:               nil,
+		SrcAccessMask:       0, // set below
+		DstAccessMask:       0, // set below
+		OldLayout:           old,
+		NewLayout:           new,
+		SrcQueueFamilyIndex: vk.QueueFamilyIgnored,
+		DstQueueFamilyIndex: vk.QueueFamilyIgnored,
+		Image:               img,
+		SubresourceRange: vk.ImageSubresourceRange{
+			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			BaseMipLevel:   0,
+			LevelCount:     1,
+			BaseArrayLayer: 0,
+			LayerCount:     1,
+		},
+	}
+	if old == vk.ImageLayoutUndefined && new == vk.ImageLayoutTransferDstOptimal {
+		barrier.SrcAccessMask = 0
+		barrier.DstAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
+		srcStage = vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
+		dstStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
+	} else if old == vk.ImageLayoutTransferDstOptimal && new == vk.ImageLayoutShaderReadOnlyOptimal {
+		barrier.SrcAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
+		barrier.DstAccessMask = vk.AccessFlags(vk.AccessShaderReadBit)
+		srcStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
+		dstStage = vk.PipelineStageFlags(vk.PipelineStageFragmentShaderBit)
+	} else {
+		log.Panicf("unsupported image layout transition!")
+	}
+	vk.CmdPipelineBarrier(
+		cmdBuf,
+		srcStage, dstStage,
+		0,
+		0, nil,
+		0, nil,
+		1, []vk.ImageMemoryBarrier{barrier},
+	)
+
+	c.endSingleTimeCommands(cmdBuf)
+}
+
+func (c *Core) copyBufferToImage(buffer vk.Buffer, img vk.Image, w uint32, h uint32) {
+	cmdBuf := c.beginSingleTimeCommands()
+	region := vk.BufferImageCopy{
+		BufferOffset:      0,
+		BufferRowLength:   0,
+		BufferImageHeight: 0,
+		ImageSubresource: vk.ImageSubresourceLayers{
+			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			MipLevel:       0,
+			BaseArrayLayer: 0,
+			LayerCount:     1,
+		},
+		ImageOffset: vk.Offset3D{
+			X: 0,
+			Y: 0,
+			Z: 0,
+		},
+		ImageExtent: vk.Extent3D{
+			Width:  w,
+			Height: h,
+			Depth:  1,
+		},
+	}
+	vk.CmdCopyBufferToImage(cmdBuf, buffer, img, vk.ImageLayoutTransferDstOptimal, 1, []vk.BufferImageCopy{region})
+	c.endSingleTimeCommands(cmdBuf)
+}
+
+func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
 	allocInfo := vk.CommandBufferAllocateInfo{
 		SType:              vk.StructureTypeCommandBufferAllocateInfo,
 		PNext:              nil,
@@ -859,15 +861,11 @@ func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
 		PInheritanceInfo: nil,
 	}
 	vk.BeginCommandBuffer(cmdBuffers[0], &beginInfo)
-	copyRegions := []vk.BufferCopy{
-		{
-			SrcOffset: 0,
-			DstOffset: 0,
-			Size:      s,
-		},
-	}
-	vk.CmdCopyBuffer(cmdBuffers[0], src, dst, 1, copyRegions)
-	vk.EndCommandBuffer(cmdBuffers[0])
+	return cmdBuffers[0]
+}
+
+func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
+	vk.EndCommandBuffer(cmdBuf)
 
 	submitInfo := vk.SubmitInfo{
 		SType:                vk.StructureTypeSubmitInfo,
@@ -876,27 +874,90 @@ func (c *Core) copyBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
 		PWaitSemaphores:      nil,
 		PWaitDstStageMask:    nil,
 		CommandBufferCount:   1,
-		PCommandBuffers:      cmdBuffers,
+		PCommandBuffers:      []vk.CommandBuffer{cmdBuf},
 		SignalSemaphoreCount: 0,
 		PSignalSemaphores:    nil,
 	}
 	vk.QueueSubmit(c.deviceContext.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
 	vk.QueueWaitIdle(c.deviceContext.graphicsQ)
-	vk.FreeCommandBuffers(*c.device, c.commandPool, 1, cmdBuffers)
+	vk.FreeCommandBuffers(*c.device, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
 }
 
-func (c *Core) findMemoryType(typeFilter uint32, propFlags vk.MemoryPropertyFlags) uint32 {
-	//log.Printf("Got memory properties: %v", toStringPhysicalDeviceMemProps(c.pdMemoryProps))
-	for i := uint32(0); i < c.deviceContext.pdMemoryProps.MemoryTypeCount; i++ {
-		ofType := (typeFilter & (1 << i)) > 0
-		hasProperties := c.deviceContext.pdMemoryProps.MemoryTypes[i].PropertyFlags&propFlags == propFlags
-		if ofType && hasProperties {
-			log.Printf("Found memory type for buffer -> %d on heap %d", i, c.deviceContext.pdMemoryProps.MemoryTypes[i].HeapIndex)
-			return i
-		}
+func (c *Core) createTexture() {
+	path := "textures/statue-1275469_1280.jpg"
+	img, err := stbi.Load(path)
+	if err != nil {
+		log.Panicf("Failed to load %s: %v", path, err)
 	}
-	log.Panicf("Failed to find suitable memory type")
-	return 0
+	w := img.Rect.Dx()
+	h := img.Rect.Dy()
+	bytesPerPixel := 4
+	imgSize := vk.DeviceSize(w * h * bytesPerPixel)
+	log.Printf("Loaded image %s (w: %dp, h:%d) %d Byte", path, w, h, imgSize)
+
+	stgBuf := CreateBuffer(
+		c.deviceContext,
+		imgSize,
+		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
+	)
+	// Map staging memory - copy our vertex data into staging - unmap staging again
+	var pData unsafe.Pointer
+	err = vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, imgSize, 0, &pData))
+	if err != nil {
+		log.Panicf("Failed to map device memory")
+	}
+	vk.Memcopy(pData, img.Pix)
+	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
+
+	c.textureImage, c.textureImageMem = CreateImage(
+		c.deviceContext,
+		uint32(w),
+		uint32(h),
+		vk.FormatR8g8b8a8Srgb,
+		vk.ImageTilingOptimal,
+		vk.ImageUsageFlags(vk.ImageUsageTransferDstBit|vk.ImageUsageSampledBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
+	)
+
+	c.transitionImageLayout(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageLayoutUndefined, vk.ImageLayoutTransferDstOptimal)
+	c.copyBufferToImage(stgBuf.handle, c.textureImage, uint32(w), uint32(h))
+	c.transitionImageLayout(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageLayoutTransferDstOptimal, vk.ImageLayoutShaderReadOnlyOptimal)
+
+	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
+	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
+}
+
+func (c *Core) createTextureViews() {
+	c.textureImageView = c.createImageView(c.textureImage, vk.FormatR8g8b8a8Srgb)
+}
+
+func (c *Core) createTextureSampler() {
+	samplerInfo := &vk.SamplerCreateInfo{
+		SType:                   vk.StructureTypeSamplerCreateInfo,
+		PNext:                   nil,
+		Flags:                   0,
+		MagFilter:               vk.FilterLinear,
+		MinFilter:               vk.FilterLinear,
+		MipmapMode:              vk.SamplerMipmapModeLinear,
+		AddressModeU:            vk.SamplerAddressModeRepeat,
+		AddressModeV:            vk.SamplerAddressModeRepeat,
+		AddressModeW:            vk.SamplerAddressModeRepeat,
+		MipLodBias:              0.0,
+		AnisotropyEnable:        vk.True,
+		MaxAnisotropy:           c.deviceContext.pdProps.Limits.MaxSamplerAnisotropy,
+		CompareEnable:           vk.False,
+		CompareOp:               vk.CompareOpAlways,
+		MinLod:                  0.0,
+		MaxLod:                  0.0,
+		BorderColor:             vk.BorderColorIntOpaqueBlack,
+		UnnormalizedCoordinates: vk.False,
+	}
+	var sampler vk.Sampler
+	if vk.CreateSampler(*c.device, samplerInfo, nil, &sampler) != vk.Success {
+		log.Panicf("Failed to create texture sampler")
+	}
+	c.textureSampler = sampler
 }
 
 // Drawing and derivative functionality
@@ -1048,12 +1109,19 @@ func (c *Core) createDescriptorSetLayout() {
 		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
 		PImmutableSamplers: nil,
 	}
+	textureSamplerLayoutBinding := vk.DescriptorSetLayoutBinding{
+		Binding:            1,                                     // <- binding index in frag shader
+		DescriptorType:     vk.DescriptorTypeCombinedImageSampler, // <- type of binding in frag shader
+		DescriptorCount:    1,
+		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+		PImmutableSamplers: nil,
+	}
 	layoutInfo := vk.DescriptorSetLayoutCreateInfo{
 		SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
 		PNext:        nil,
 		Flags:        0,
-		BindingCount: 1,
-		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding},
+		BindingCount: 2,
+		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, textureSamplerLayoutBinding},
 	}
 	var dsl vk.DescriptorSetLayout
 	if vk.CreateDescriptorSetLayout(*c.device, &layoutInfo, nil, &dsl) != vk.Success {
@@ -1072,14 +1140,25 @@ func (c *Core) createUniformBuffers() {
 
 	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
-		c.uniformBuffers[i], c.uniformBufferMems[i] = c.createBuffer(uboBufSize, vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit), memProps)
+		uboBuf := CreateBuffer(
+			c.deviceContext,
+			uboBufSize,
+			vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit),
+			memProps,
+		)
+		c.uniformBuffers[i] = uboBuf.handle
+		c.uniformBufferMems[i] = uboBuf.deviceMem
 		vk.MapMemory(*c.device, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
 	}
 }
 
 func (c *Core) createDescriptorPool() {
-	poolSize := vk.DescriptorPoolSize{
+	uboPoolSize := vk.DescriptorPoolSize{
 		Type:            vk.DescriptorTypeUniformBuffer,
+		DescriptorCount: MAX_FRAMES_IN_FLIGHT,
+	}
+	texSamplerPoolSize := vk.DescriptorPoolSize{
+		Type:            vk.DescriptorTypeCombinedImageSampler,
 		DescriptorCount: MAX_FRAMES_IN_FLIGHT,
 	}
 	poolInfo := vk.DescriptorPoolCreateInfo{
@@ -1087,8 +1166,8 @@ func (c *Core) createDescriptorPool() {
 		PNext:         nil,
 		Flags:         0,
 		MaxSets:       MAX_FRAMES_IN_FLIGHT,
-		PoolSizeCount: 1,
-		PPoolSizes:    []vk.DescriptorPoolSize{poolSize},
+		PoolSizeCount: 2,
+		PPoolSizes:    []vk.DescriptorPoolSize{uboPoolSize, texSamplerPoolSize},
 	}
 	var dp vk.DescriptorPool
 	if vk.CreateDescriptorPool(*c.device, &poolInfo, nil, &dp) != vk.Success {
@@ -1114,12 +1193,13 @@ func (c *Core) createDescriptorSets() {
 	c.descriptorSets = sets
 
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
+		// ubo
 		bufferInfo := vk.DescriptorBufferInfo{
 			Buffer: c.uniformBuffers[i],
 			Offset: 0,
 			Range:  vk.DeviceSize(model.SizeOfUbo()),
 		}
-		descriptorWrite := vk.WriteDescriptorSet{
+		uboDescriptorWrite := vk.WriteDescriptorSet{
 			SType:            vk.StructureTypeWriteDescriptorSet,
 			PNext:            nil,
 			DstSet:           c.descriptorSets[i],
@@ -1131,7 +1211,27 @@ func (c *Core) createDescriptorSets() {
 			PBufferInfo:      []vk.DescriptorBufferInfo{bufferInfo},
 			PTexelBufferView: nil,
 		}
-		vk.UpdateDescriptorSets(*c.device, 1, []vk.WriteDescriptorSet{descriptorWrite}, 0, nil)
+
+		// textureSampler
+		texSampler := vk.DescriptorImageInfo{
+			Sampler:     c.textureSampler,
+			ImageView:   c.textureImageView,
+			ImageLayout: vk.ImageLayoutShaderReadOnlyOptimal,
+		}
+		texSamplerDescriptorWrite := vk.WriteDescriptorSet{
+			SType:            vk.StructureTypeWriteDescriptorSet,
+			PNext:            nil,
+			DstSet:           c.descriptorSets[i],
+			DstBinding:       1,
+			DstArrayElement:  0,
+			DescriptorCount:  1,
+			DescriptorType:   vk.DescriptorTypeCombinedImageSampler,
+			PImageInfo:       []vk.DescriptorImageInfo{texSampler},
+			PBufferInfo:      nil,
+			PTexelBufferView: nil,
+		}
+		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, texSamplerDescriptorWrite}
+		vk.UpdateDescriptorSets(*c.device, uint32(len(writes)), writes, 0, nil)
 	}
 }
 

@@ -7,8 +7,9 @@ import (
 )
 
 type Vertex struct {
-	Pos   vector_math.Vec3
-	Color vector_math.Vec3
+	Pos      vector_math.Vec3
+	Color    vector_math.Vec3
+	TexCoord vector_math.Vec2
 }
 
 func GetVertexBindingDescription() vk.VertexInputBindingDescription {
@@ -32,6 +33,12 @@ func GetVertexAttributeDescriptions() []vk.VertexInputAttributeDescription {
 			Binding:  0,
 			Format:   vk.FormatR32g32b32Sfloat,
 			Offset:   uint32(unsafe.Offsetof(Vertex{}.Color)),
+		},
+		{
+			Location: 2,
+			Binding:  0,
+			Format:   vk.FormatR32g32Sfloat,
+			Offset:   uint32(unsafe.Offsetof(Vertex{}.TexCoord)),
 		},
 	}
 }
