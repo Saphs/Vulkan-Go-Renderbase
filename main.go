@@ -73,13 +73,13 @@ func onIteration(event sdl.Event, c *Core) {
 				c.cam.LookTarget = nil
 				log.Printf("Reset camera to Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
 			case sdl.K_w:
-				c.cam.Move(vm.Vec3{Z: 1})
+				c.cam.Move(c.cam.LookDir)
 			case sdl.K_a:
-				c.cam.Move(vm.Vec3{X: -1})
+				c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(-1))
 			case sdl.K_s:
-				c.cam.Move(vm.Vec3{Z: -1})
+				c.cam.Move(c.cam.LookDir.ScalarMul(-1))
 			case sdl.K_d:
-				c.cam.Move(vm.Vec3{X: 1})
+				c.cam.Move(c.cam.LookDir.Cross(c.cam.Up))
 			case sdl.K_q:
 				c.cam.Turn(10, vm.Vec3{Y: -1})
 			case sdl.K_e:
