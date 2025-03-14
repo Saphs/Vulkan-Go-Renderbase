@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"time"
 )
 
 const ENABLE_VALIDATION = true
@@ -24,6 +25,7 @@ const PROGRAM_NAME = "GPU fluid simulation"
 const WINDOW_WIDTH, WINDOW_HEIGHT int32 = 1280, 720
 const MAX_FRAMES_IN_FLIGHT = 3
 
+const MOV_UNITS_PER_SEC = 5
 const MOUSE_SENSITIVITY = 0.5
 
 func init() {
@@ -32,6 +34,9 @@ func init() {
 	log.Println("Stating fluid simulation")
 	log.Printf("Using GoLang: [%s]", runtime.Version())
 }
+
+var dtDraw = time.Now()
+var currentlyPressed []sdl.Keycode
 
 func onIteration(event sdl.Event, c *Core) {
 	switch ev := event.(type) {
@@ -48,6 +53,7 @@ func onIteration(event sdl.Event, c *Core) {
 		}
 	case *sdl.KeyboardEvent:
 		if ev.Type == sdl.KEYUP {
+			removePressedKey(ev.Keysym.Sym)
 			switch ev.Keysym.Sym {
 			case sdl.K_1:
 				var newProj int
@@ -72,35 +78,79 @@ func onIteration(event sdl.Event, c *Core) {
 				c.cam.LookDir = vm.Vec3{Z: 1}
 				c.cam.LookTarget = nil
 				log.Printf("Reset camera to Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
-			case sdl.K_w:
-				c.cam.Move(c.cam.LookDir)
-			case sdl.K_a:
-				c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(-1))
-			case sdl.K_s:
-				c.cam.Move(c.cam.LookDir.ScalarMul(-1))
-			case sdl.K_d:
-				c.cam.Move(c.cam.LookDir.Cross(c.cam.Up))
-			case sdl.K_q:
-				c.cam.Turn(10, vm.Vec3{Y: -1})
-			case sdl.K_e:
-				c.cam.Turn(10, vm.Vec3{Y: 1})
 			}
+		}
+		if ev.Type == sdl.KEYDOWN {
+			addPressedKey(ev.Keysym.Sym)
 		}
 	}
 }
 
-func onDraw(elapsed float64, c *Core) {
-	m := vm.NewUnitMat(4)
+func onDraw(elapsed time.Duration, c *Core) {
+	drawLast := dtDraw
+	dtDraw = time.Now()
+	delta := dtDraw.Sub(drawLast)
 
+	m := vm.NewUnitMat(4)
 	mod2, err := c.FindInScene("Cube 2")
 	mod1, err := c.FindInScene("Cube 1")
 	if err != nil {
 		log.Println(err)
 	} else {
-		m, _ = m.Rotate(elapsed*vm.ToRad(45), vm.Vec3{X: 1, Y: 1})
+		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(45), vm.Vec3{X: 1, Y: 1})
 		mod1.Mesh.ModelMat = m
-		m, _ = m.Rotate(elapsed*vm.ToRad(20), vm.Vec3{X: 0.5, Y: 1})
+		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(20), vm.Vec3{X: 0.5, Y: 1})
 		mod2.Mesh.ModelMat = m
+	}
+
+	// Interactions with the world that should not happen each event, but each frame
+	// ToDo: Introduce third function hook
+	// 	-> Non-render relevant things that happen each frame, e.g.: Scene interactions like moving camera
+	for _, key := range currentlyPressed {
+		switch key {
+		case sdl.K_w:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.LookDir.ScalarMul(movScale))
+		case sdl.K_s:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.LookDir.ScalarMul(-movScale))
+		case sdl.K_d:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(movScale))
+		case sdl.K_a:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(-movScale))
+		case sdl.K_SPACE:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.Up.ScalarMul(movScale))
+		case sdl.K_LSHIFT:
+			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
+			c.cam.Move(c.cam.Up.ScalarMul(-movScale))
+		}
+
+	}
+}
+
+func addPressedKey(key sdl.Keycode) {
+	inList := false
+	for i := range currentlyPressed {
+		if currentlyPressed[i] == key {
+			inList = true
+			break
+		}
+	}
+	if !inList {
+		currentlyPressed = append(currentlyPressed, key)
+	}
+}
+
+func removePressedKey(key sdl.Keycode) {
+	for i := range currentlyPressed {
+		if currentlyPressed[i] == key {
+			currentlyPressed[i] = currentlyPressed[len(currentlyPressed)-1]
+			currentlyPressed = currentlyPressed[:len(currentlyPressed)-1]
+			return
+		}
 	}
 }
 

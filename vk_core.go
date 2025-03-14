@@ -15,6 +15,9 @@ import (
 	"unsafe"
 )
 
+const FPS_TARGET float64 = 144
+const INV_FPS_TARGET float64 = 6.9
+
 type Core struct {
 	// OS/Window level
 	win           *sdl.Window
@@ -147,7 +150,7 @@ func (c *Core) Initialize() {
 
 type iterationHandler func(sdl.Event, *Core)
 
-type drawHandler func(float64, *Core)
+type drawHandler func(time.Duration, *Core)
 
 // loop this function represents the event-loop for user interaction and currently also contains
 // the primary draw call that renders each frame. The whole purpose of this function is to provide
@@ -180,7 +183,7 @@ func (c *Core) loop(ih iterationHandler, dh drawHandler) {
 			ih(event, c)
 		}
 		if !c.winMinimized {
-			dh(time.Since(t0).Seconds(), c)
+			dh(time.Since(t0), c)
 			c.drawFrame()
 			frames++
 		} else {
@@ -188,9 +191,8 @@ func (c *Core) loop(ih iterationHandler, dh drawHandler) {
 			sdl.WaitEvent()
 		}
 	}
-	t1 := time.Now()
-	dtSec := float64(t1.Sub(t0).Milliseconds()) / 1000
-	log.Printf("Elapsed: %vs, rough avg fps: %v fps", dtSec, float64(frames)/dtSec)
+	dt := time.Since(t0)
+	log.Printf("Elapsed: %v, rough avg fps: %v fps", dt, float64(frames)/dt.Seconds())
 }
 
 func (c *Core) destroy() {
