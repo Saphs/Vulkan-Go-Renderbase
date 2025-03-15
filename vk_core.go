@@ -66,6 +66,10 @@ type Core struct {
 	textureImageMem  vk.DeviceMemory
 	textureImageView vk.ImageView
 	textureSampler   vk.Sampler
+
+	depthImage     vk.Image
+	depthImageMem  vk.DeviceMemory
+	depthImageView vk.ImageView
 }
 
 // Externally facing functions
@@ -136,8 +140,9 @@ func (c *Core) Initialize() {
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
-	c.createFrameBuffers()
 	c.createCommandPool()
+	c.createDepthResources()
+	c.createFrameBuffers()
 	c.createTexture()
 	c.createTextureViews()
 	c.createTextureSampler()
@@ -241,6 +246,10 @@ func (c *Core) destroy() {
 }
 
 func (c *Core) destroySwapChainAndDerivatives() {
+	vk.DestroyImageView(*c.device, c.depthImageView, nil)
+	vk.DestroyImage(*c.device, c.depthImage, nil)
+	vk.FreeMemory(*c.device, c.depthImageMem, nil)
+
 	for i := range c.scFrameBuffers {
 		vk.DestroyFramebuffer(*c.device, c.scFrameBuffers[i], nil)
 	}
@@ -344,7 +353,7 @@ func (c *Core) createSwapChain() {
 	log.Printf("Read resulting image handles: %v", c.scImages)
 }
 
-func (c *Core) createImageView(image vk.Image, format vk.Format) vk.ImageView {
+func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
 	createInfo := &vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		PNext:    nil,
@@ -359,7 +368,7 @@ func (c *Core) createImageView(image vk.Image, format vk.Format) vk.ImageView {
 			A: vk.ComponentSwizzleIdentity,
 		},
 		SubresourceRange: vk.ImageSubresourceRange{
-			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			AspectMask:     aspectFlags,
 			BaseMipLevel:   0,
 			LevelCount:     1,
 			BaseArrayLayer: 0,
@@ -376,7 +385,7 @@ func (c *Core) createImageView(image vk.Image, format vk.Format) vk.ImageView {
 func (c *Core) createImageViews() {
 	c.scImgViews = make([]vk.ImageView, len(c.scImages))
 	for i := range c.scImages {
-		c.scImgViews[i] = c.createImageView(c.scImages[i], c.scFormat.Format)
+		c.scImgViews[i] = c.createImageView(c.scImages[i], c.scFormat.Format, vk.ImageAspectFlags(vk.ImageAspectColorBit))
 	}
 	log.Printf("Successfully created %d image views %v", len(c.scImgViews), c.scImgViews)
 }
@@ -397,6 +406,21 @@ func (c *Core) createRenderPass() {
 		Attachment: 0,
 		Layout:     vk.ImageLayoutColorAttachmentOptimal,
 	}
+	depthAttachment := vk.AttachmentDescription{
+		Flags:          0,
+		Format:         c.findDepthFormat(),
+		Samples:        vk.SampleCount1Bit,
+		LoadOp:         vk.AttachmentLoadOpClear,
+		StoreOp:        vk.AttachmentStoreOpDontCare,
+		StencilLoadOp:  vk.AttachmentLoadOpDontCare,
+		StencilStoreOp: vk.AttachmentStoreOpDontCare,
+		InitialLayout:  vk.ImageLayoutUndefined,
+		FinalLayout:    vk.ImageLayoutDepthStencilAttachmentOptimal,
+	}
+	depthAttachmentRef := vk.AttachmentReference{
+		Attachment: 1,
+		Layout:     vk.ImageLayoutDepthStencilAttachmentOptimal,
+	}
 	subpass := vk.SubpassDescription{
 		Flags:                   0,
 		PipelineBindPoint:       vk.PipelineBindPointGraphics,
@@ -405,25 +429,25 @@ func (c *Core) createRenderPass() {
 		ColorAttachmentCount:    1,
 		PColorAttachments:       []vk.AttachmentReference{colorAttachmentRef},
 		PResolveAttachments:     nil,
-		PDepthStencilAttachment: nil,
+		PDepthStencilAttachment: &depthAttachmentRef,
 		PreserveAttachmentCount: 0,
 		PPreserveAttachments:    nil,
 	}
 	dependency := vk.SubpassDependency{
 		SrcSubpass:      vk.SubpassExternal,
 		DstSubpass:      0,
-		SrcStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit),
-		DstStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit),
+		SrcStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit | vk.PipelineStageEarlyFragmentTestsBit),
+		DstStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit | vk.PipelineStageEarlyFragmentTestsBit),
 		SrcAccessMask:   0,
-		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentWriteBit),
+		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentWriteBit | vk.AccessDepthStencilAttachmentWriteBit),
 		DependencyFlags: 0,
 	}
 	renderPassInfo := vk.RenderPassCreateInfo{
 		SType:           vk.StructureTypeRenderPassCreateInfo,
 		PNext:           nil,
 		Flags:           0,
-		AttachmentCount: 1,
-		PAttachments:    []vk.AttachmentDescription{colorAttachment},
+		AttachmentCount: 2,
+		PAttachments:    []vk.AttachmentDescription{colorAttachment, depthAttachment},
 		SubpassCount:    1,
 		PSubpasses:      []vk.SubpassDescription{subpass},
 		DependencyCount: 1,
@@ -556,6 +580,21 @@ func (c *Core) createGraphicsPipeline() {
 	}
 	c.pipelineLayout = layouts
 
+	depthStencil := vk.PipelineDepthStencilStateCreateInfo{
+		SType:                 vk.StructureTypePipelineDepthStencilStateCreateInfo,
+		PNext:                 nil,
+		Flags:                 0,
+		DepthTestEnable:       vk.True,
+		DepthWriteEnable:      vk.True,
+		DepthCompareOp:        vk.CompareOpLess,
+		DepthBoundsTestEnable: vk.False,
+		StencilTestEnable:     vk.False,
+		Front:                 vk.StencilOpState{},
+		Back:                  vk.StencilOpState{},
+		MinDepthBounds:        0,
+		MaxDepthBounds:        1,
+	}
+
 	// The actual pipeline
 	pipelineInfo := vk.GraphicsPipelineCreateInfo{
 		SType:               vk.StructureTypeGraphicsPipelineCreateInfo,
@@ -569,7 +608,7 @@ func (c *Core) createGraphicsPipeline() {
 		PViewportState:      &viewportStateInfo,
 		PRasterizationState: &rasterizerInfo,
 		PMultisampleState:   &multisamplingInfo,
-		PDepthStencilState:  nil,
+		PDepthStencilState:  &depthStencil,
 		PColorBlendState:    &colorBlendingInfo,
 		PDynamicState:       &dynamicStateCreateInfo,
 		Layout:              c.pipelineLayout,
@@ -599,8 +638,8 @@ func (c *Core) createFrameBuffers() {
 			PNext:           nil,
 			Flags:           0,
 			RenderPass:      c.renderPass,
-			AttachmentCount: 1,
-			PAttachments:    []vk.ImageView{c.scImgViews[i]},
+			AttachmentCount: 2,
+			PAttachments:    []vk.ImageView{c.scImgViews[i], c.depthImageView},
 			Width:           c.scExtend.Width,
 			Height:          c.scExtend.Height,
 			Layers:          1,
@@ -773,6 +812,16 @@ func (c *Core) copyVkBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
 func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.ImageLayout, new vk.ImageLayout) {
 	cmdBuf := c.beginSingleTimeCommands()
 
+	var aspectFlags vk.ImageAspectFlags
+	if new == vk.ImageLayoutDepthStencilAttachmentOptimal {
+		aspectFlags = vk.ImageAspectFlags(vk.ImageAspectDepthBit)
+		if hasStencilComponent(format) {
+			aspectFlags = vk.ImageAspectFlags(vk.ImageAspectDepthBit | vk.ImageAspectStencilBit)
+		}
+	} else {
+		aspectFlags = vk.ImageAspectFlags(vk.ImageAspectColorBit)
+	}
+
 	var srcStage vk.PipelineStageFlags
 	var dstStage vk.PipelineStageFlags
 	barrier := vk.ImageMemoryBarrier{
@@ -786,13 +835,14 @@ func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.Imag
 		DstQueueFamilyIndex: vk.QueueFamilyIgnored,
 		Image:               img,
 		SubresourceRange: vk.ImageSubresourceRange{
-			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			AspectMask:     aspectFlags,
 			BaseMipLevel:   0,
 			LevelCount:     1,
 			BaseArrayLayer: 0,
 			LayerCount:     1,
 		},
 	}
+
 	if old == vk.ImageLayoutUndefined && new == vk.ImageLayoutTransferDstOptimal {
 		barrier.SrcAccessMask = 0
 		barrier.DstAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
@@ -803,9 +853,15 @@ func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.Imag
 		barrier.DstAccessMask = vk.AccessFlags(vk.AccessShaderReadBit)
 		srcStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
 		dstStage = vk.PipelineStageFlags(vk.PipelineStageFragmentShaderBit)
+	} else if old == vk.ImageLayoutUndefined && new == vk.ImageLayoutDepthStencilAttachmentOptimal {
+		barrier.SrcAccessMask = 0
+		barrier.DstAccessMask = vk.AccessFlags(vk.AccessDepthStencilAttachmentReadBit | vk.AccessDepthStencilAttachmentWriteBit)
+		srcStage = vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
+		dstStage = vk.PipelineStageFlags(vk.PipelineStageEarlyFragmentTestsBit)
 	} else {
 		log.Panicf("unsupported image layout transition!")
 	}
+
 	vk.CmdPipelineBarrier(
 		cmdBuf,
 		srcStage, dstStage,
@@ -931,7 +987,7 @@ func (c *Core) createTexture() {
 }
 
 func (c *Core) createTextureViews() {
-	c.textureImageView = c.createImageView(c.textureImage, vk.FormatR8g8b8a8Srgb)
+	c.textureImageView = c.createImageView(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageAspectFlags(vk.ImageAspectColorBit))
 }
 
 func (c *Core) createTextureSampler() {
@@ -962,6 +1018,51 @@ func (c *Core) createTextureSampler() {
 	c.textureSampler = sampler
 }
 
+func (c *Core) createDepthResources() {
+	dFormat := c.findDepthFormat()
+	dImg, dImgMem := CreateImage(
+		c.deviceContext,
+		c.scExtend.Width,
+		c.scExtend.Height,
+		dFormat,
+		vk.ImageTilingOptimal,
+		vk.ImageUsageFlags(vk.ImageUsageDepthStencilAttachmentBit),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
+	)
+	dImgView := c.createImageView(dImg, dFormat, vk.ImageAspectFlags(vk.ImageAspectDepthBit))
+	c.depthImage = dImg
+	c.depthImageMem = dImgMem
+	c.depthImageView = dImgView
+
+	c.transitionImageLayout(c.depthImage, dFormat, vk.ImageLayoutUndefined, vk.ImageLayoutDepthStencilAttachmentOptimal)
+}
+
+func (c *Core) findDepthFormat() vk.Format {
+	return c.findSupportedFormat(
+		[]vk.Format{vk.FormatD32Sfloat, vk.FormatD32SfloatS8Uint, vk.FormatD24UnormS8Uint},
+		vk.ImageTilingOptimal,
+		vk.FormatFeatureFlags(vk.FormatFeatureDepthStencilAttachmentBit),
+	)
+}
+
+func hasStencilComponent(format vk.Format) bool {
+	return format == vk.FormatD32SfloatS8Uint || format == vk.FormatD24UnormS8Uint
+}
+
+func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
+	for _, format := range candidates {
+		var fProps vk.FormatProperties
+		vk.GetPhysicalDeviceFormatProperties(c.deviceContext.physicalDevice, format, &fProps)
+		fProps.Deref()
+		if tiling == vk.ImageTilingLinear && (fProps.LinearTilingFeatures&features) == features {
+			return format
+		} else if tiling == vk.ImageTilingOptimal && (fProps.OptimalTilingFeatures&features) == features {
+			return format
+		}
+	}
+	panic("No supported format found")
+}
+
 // Drawing and derivative functionality
 
 func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
@@ -982,7 +1083,8 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		Extent: c.scExtend,
 	}
 	clearValues := []vk.ClearValue{
-		vk.NewClearValue([]float32{0.01, 0.01, 0.01, 1}),
+		vk.NewClearValue([]float32{0.01, 0.01, 0.01, 1}), // color
+		vk.NewClearDepthStencil(1, 0),                    // depthStencil <- Go bindings are strange here ! dont really know about the necessary values
 	}
 	renderPassInfo := vk.RenderPassBeginInfo{
 		SType:           vk.StructureTypeRenderPassBeginInfo,
@@ -1100,6 +1202,7 @@ func (c *Core) recreateSwapChain() {
 	c.destroySwapChainAndDerivatives()
 	c.createSwapChain()
 	c.createImageViews()
+	c.createDepthResources()
 	c.createFrameBuffers()
 }
 

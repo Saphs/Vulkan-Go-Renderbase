@@ -16,8 +16,8 @@ type DeviceContext struct {
 	vkSurface  vk.Surface
 
 	physicalDevice vk.PhysicalDevice
-	pdMemoryProps  vk.PhysicalDeviceMemoryProperties
 	pdProps        vk.PhysicalDeviceProperties
+	pdMemoryProps  vk.PhysicalDeviceMemoryProperties
 	qFamilies      QueueFamilyIndices
 
 	device    vk.Device
