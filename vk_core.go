@@ -28,11 +28,7 @@ type Core struct {
 	device        *vk.Device
 
 	// Target level
-	swapChain  vk.Swapchain
-	scImages   []vk.Image
-	scImgViews []vk.ImageView
-	scFormat   vk.SurfaceFormat
-	scExtend   vk.Extent2D
+	swapChainStruct *SwapChain
 
 	// Drawing infrastructure level
 	renderPass          vk.RenderPass
@@ -41,7 +37,6 @@ type Core struct {
 	descriptorSets      []vk.DescriptorSet
 	pipelineLayout      vk.PipelineLayout
 	pipelines           []vk.Pipeline
-	scFrameBuffers      []vk.Framebuffer
 	commandPool         vk.CommandPool
 
 	// DepthBuffer
@@ -135,8 +130,8 @@ func (c *Core) DestroyModelBuffers(model *model.Model) {
 
 func (c *Core) Initialize() {
 	c.device = c.deviceContext.init()
-	c.createSwapChain()
-	c.createImageViews()
+	c.swapChainStruct = NewSwapChain(c.deviceContext)
+	//c.createSwapChain()
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
@@ -250,13 +245,7 @@ func (c *Core) destroySwapChainAndDerivatives() {
 	vk.DestroyImage(*c.device, c.depthImage, nil)
 	vk.FreeMemory(*c.device, c.depthImageMem, nil)
 
-	for i := range c.scFrameBuffers {
-		vk.DestroyFramebuffer(*c.device, c.scFrameBuffers[i], nil)
-	}
-	for i := range c.scImgViews {
-		vk.DestroyImageView(*c.device, c.scImgViews[i], nil)
-	}
-	vk.DestroySwapchain(*c.device, c.swapChain, nil)
+	c.swapChainStruct.destroy(c.deviceContext)
 }
 
 // Bootstrapping / Initialization code
@@ -294,66 +283,11 @@ func initVulkan() {
 	}
 }
 
-func (c *Core) createSwapChain() {
-	scDetails := readSwapChainSupportDetails(c.deviceContext.physicalDevice, c.deviceContext.vkSurface)
-	c.scFormat = scDetails.selectSwapSurfaceFormat()
-	scPresentMode := scDetails.selectSwapPresentMode()
-	c.scExtend = scDetails.chooseSwapExtent()
-
-	imgCount := scDetails.capabilities.MinImageCount + 1
-	imgMaxCount := scDetails.capabilities.MaxImageCount
-	if imgCount > 0 && imgCount > imgMaxCount {
-		imgCount = imgMaxCount
-	}
-
-	// Depending on whether our queue families are the same for graphics and presentation, we need to choose different
-	// swap chain configurations: https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
-	indices := c.deviceContext.qFamilies
-	var sharingMode vk.SharingMode
-	var indexCount uint32
-	qFamIndices := []uint32{*indices.graphicsFamily, *indices.presentFamily}
-	if *indices.graphicsFamily != *indices.presentFamily {
-		sharingMode = vk.SharingModeConcurrent
-		indexCount = 2
-	} else {
-		sharingMode = vk.SharingModeExclusive
-		indexCount = 0
-		qFamIndices = nil
-	}
-
-	createInfo := &vk.SwapchainCreateInfo{
-		SType:                 vk.StructureTypeSwapchainCreateInfo,
-		PNext:                 nil,
-		Flags:                 0,
-		Surface:               c.deviceContext.vkSurface,
-		MinImageCount:         imgCount,
-		ImageFormat:           c.scFormat.Format,
-		ImageColorSpace:       c.scFormat.ColorSpace,
-		ImageExtent:           c.scExtend,
-		ImageArrayLayers:      1,
-		ImageUsage:            vk.ImageUsageFlags(vk.ImageUsageColorAttachmentBit),
-		ImageSharingMode:      sharingMode,
-		QueueFamilyIndexCount: indexCount,
-		PQueueFamilyIndices:   qFamIndices,
-		PreTransform:          scDetails.capabilities.CurrentTransform,
-		CompositeAlpha:        vk.CompositeAlphaOpaqueBit,
-		PresentMode:           scPresentMode,
-		Clipped:               vk.True,
-		OldSwapchain:          nil,
-	}
-
-	var err error
-	c.swapChain, err = tooling.VkCreateSwapChain(*c.device, createInfo, nil)
-	if err != nil {
-		log.Panicf("Failed create swapchain due to: %s", "err")
-	}
-	log.Println("Successfully created swap chain")
-
-	c.scImages = readSwapChainImages(*c.device, c.swapChain)
-	log.Printf("Read resulting image handles: %v", c.scImages)
+func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+	return CreateImageViewDC(c.deviceContext, image, format, aspectFlags)
 }
 
-func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
 	createInfo := &vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		PNext:    nil,
@@ -375,25 +309,17 @@ func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.
 			LayerCount:     1,
 		},
 	}
-	imgView, err := tooling.VkCreateImageView(*c.device, createInfo, nil)
+	imgView, err := tooling.VkCreateImageView(dc.device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create image view due to: %s", err)
 	}
 	return imgView
 }
 
-func (c *Core) createImageViews() {
-	c.scImgViews = make([]vk.ImageView, len(c.scImages))
-	for i := range c.scImages {
-		c.scImgViews[i] = c.createImageView(c.scImages[i], c.scFormat.Format, vk.ImageAspectFlags(vk.ImageAspectColorBit))
-	}
-	log.Printf("Successfully created %d image views %v", len(c.scImgViews), c.scImgViews)
-}
-
 func (c *Core) createRenderPass() {
 	colorAttachment := vk.AttachmentDescription{
 		Flags:          0,
-		Format:         c.scFormat.Format,
+		Format:         c.swapChainStruct.Format.Format,
 		Samples:        vk.SampleCount1Bit,
 		LoadOp:         vk.AttachmentLoadOpClear,
 		StoreOp:        vk.AttachmentStoreOpStore,
@@ -631,26 +557,7 @@ func (c *Core) createGraphicsPipeline() {
 }
 
 func (c *Core) createFrameBuffers() {
-	c.scFrameBuffers = make([]vk.Framebuffer, len(c.scImgViews))
-	for i := range c.scImgViews {
-		framebufferInfo := vk.FramebufferCreateInfo{
-			SType:           vk.StructureTypeFramebufferCreateInfo,
-			PNext:           nil,
-			Flags:           0,
-			RenderPass:      c.renderPass,
-			AttachmentCount: 2,
-			PAttachments:    []vk.ImageView{c.scImgViews[i], c.depthImageView},
-			Width:           c.scExtend.Width,
-			Height:          c.scExtend.Height,
-			Layers:          1,
-		}
-		fb, err := tooling.VkCreateFrameBuffer(*c.device, &framebufferInfo, nil)
-		if err != nil {
-			log.Panicf("Failed to create frame buffer [%d]", i)
-		}
-		c.scFrameBuffers[i] = fb
-	}
-	log.Printf("Successfully created %d frame buffers %v", len(c.scFrameBuffers), c.scFrameBuffers)
+	c.swapChainStruct.CreateFrameBuffers(c.deviceContext, c.renderPass, &c.depthImageView)
 }
 
 func (c *Core) createCommandPool() {
@@ -1022,8 +929,8 @@ func (c *Core) createDepthResources() {
 	dFormat := c.findDepthFormat()
 	dImg, dImgMem := CreateImage(
 		c.deviceContext,
-		c.scExtend.Width,
-		c.scExtend.Height,
+		c.swapChainStruct.Extend.Width,
+		c.swapChainStruct.Extend.Height,
 		dFormat,
 		vk.ImageTilingOptimal,
 		vk.ImageUsageFlags(vk.ImageUsageDepthStencilAttachmentBit),
@@ -1080,7 +987,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	// Start render pass
 	renderArea := vk.Rect2D{
 		Offset: vk.Offset2D{X: 0, Y: 0},
-		Extent: c.scExtend,
+		Extent: c.swapChainStruct.Extend,
 	}
 	clearValues := []vk.ClearValue{
 		vk.NewClearValue([]float32{0.01, 0.01, 0.01, 1}), // color
@@ -1090,7 +997,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		SType:           vk.StructureTypeRenderPassBeginInfo,
 		PNext:           nil,
 		RenderPass:      c.renderPass,
-		Framebuffer:     c.scFrameBuffers[imageIdx],
+		Framebuffer:     c.swapChainStruct.FrameBuffers[imageIdx],
 		RenderArea:      renderArea,
 		ClearValueCount: uint32(len(clearValues)),
 		PClearValues:    clearValues,
@@ -1103,8 +1010,8 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		{
 			X:        0,
 			Y:        0,
-			Width:    float32(c.scExtend.Width),
-			Height:   float32(c.scExtend.Height),
+			Width:    float32(c.swapChainStruct.Extend.Width),
+			Height:   float32(c.swapChainStruct.Extend.Height),
 			MinDepth: 0,
 			MaxDepth: 1.0,
 		},
@@ -1114,7 +1021,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	scissor := []vk.Rect2D{
 		{
 			Offset: vk.Offset2D{X: 0, Y: 0},
-			Extent: c.scExtend,
+			Extent: c.swapChainStruct.Extend,
 		},
 	}
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
@@ -1141,7 +1048,7 @@ func (c *Core) drawFrame() {
 	vk.WaitForFences(*c.device, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]}, vk.True, math.MaxUint64)
 
 	var imgIdx uint32
-	result := vk.AcquireNextImage(*c.device, c.swapChain, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
+	result := vk.AcquireNextImage(*c.device, c.swapChainStruct.Handle, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
 	if result == vk.ErrorOutOfDate {
 		c.recreateSwapChain()
@@ -1181,7 +1088,7 @@ func (c *Core) drawFrame() {
 		WaitSemaphoreCount: 1,
 		PWaitSemaphores:    []vk.Semaphore{c.renderFinishedSems[c.currentFrameIdx]},
 		SwapchainCount:     1,
-		PSwapchains:        []vk.Swapchain{c.swapChain},
+		PSwapchains:        []vk.Swapchain{c.swapChainStruct.Handle},
 		PImageIndices:      []uint32{imgIdx},
 		PResults:           nil,
 	}
@@ -1200,8 +1107,7 @@ func (c *Core) drawFrame() {
 func (c *Core) recreateSwapChain() {
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
-	c.createSwapChain()
-	c.createImageViews()
+	c.swapChainStruct = NewSwapChain(c.deviceContext)
 	c.createDepthResources()
 	c.createFrameBuffers()
 }
@@ -1341,7 +1247,7 @@ func (c *Core) createDescriptorSets() {
 }
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
-	c.cam.Aspect = float32(c.scExtend.Width) / float32(c.scExtend.Height)
+	c.cam.Aspect = c.swapChainStruct.Aspect
 	ubo := model.UniformBufferObject{
 		View:       c.cam.GetView(),
 		Projection: c.cam.GetProjection(),
