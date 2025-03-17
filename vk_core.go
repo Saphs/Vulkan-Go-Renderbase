@@ -628,14 +628,8 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
 	)
 
-	// Map staging memory - copy our vertex data into staging - unmap staging again
-	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, bufSize, 0, &pData))
-	if err != nil {
-		log.Panicf("Failed to map device memory")
-	}
-	vk.Memcopy(pData, m.GetVBufferBytes())
-	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
+	// Copy our vertex data into staging (device) memory
+	CopyToDeviceBuffer(c.deviceCtx, stgBuf, m.GetVBufferBytes())
 
 	// Create vertex buffer
 	vertBuf := CreateBuffer(
@@ -651,8 +645,7 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stgBuf, vertBuf, bufSize)
-	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
-	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
+	DestroyBuffer(c.deviceCtx, stgBuf)
 
 	return vertBuf.handle, vertBuf.deviceMem
 }
@@ -1142,7 +1135,7 @@ func (c *Core) createDescriptorSetLayout() {
 }
 
 func (c *Core) createUniformBuffers() {
-	uboBufSize := vk.DeviceSize(int(model.SizeOfUbo()))
+	uboBufSize := model.SizeOfUbo()
 	log.Printf("UBO buffer size: %d Byte", uboBufSize)
 
 	c.uniformBuffers = make([]vk.Buffer, MAX_FRAMES_IN_FLIGHT)
@@ -1208,7 +1201,7 @@ func (c *Core) createDescriptorSets() {
 		bufferInfo := vk.DescriptorBufferInfo{
 			Buffer: c.uniformBuffers[i],
 			Offset: 0,
-			Range:  vk.DeviceSize(model.SizeOfUbo()),
+			Range:  model.SizeOfUbo(),
 		}
 		uboDescriptorWrite := vk.WriteDescriptorSet{
 			SType:            vk.StructureTypeWriteDescriptorSet,

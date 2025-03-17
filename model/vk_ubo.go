@@ -2,21 +2,23 @@ package model
 
 import (
 	"GPU_fluid_simulation/tooling"
+	vk "github.com/goki/vulkan"
 	"local/vector_math"
 )
 
+// UniformBufferObject a uniform buffer object as a tightly packed struct that will be transferred to the GPU
+// a wrapping type is used to access and update it
 type UniformBufferObject struct {
 	View       vector_math.Mat
 	Projection vector_math.Mat // 192byte calculated size
 }
 
-// SizeOfUbo returns size of the UniformBufferObject struct under the assumption
-// that model, view and projection are 4x4 matrices. This is done due to some
-// the type system otherwise requiring us to implement all NxM matrices using
+// SizeOfUbo returns size of the UniformBufferObject struct under the assumption that view and projection are
+// 4x4 matrices. This is done due to the type system otherwise requiring us to implement all NxM matrices using
 // fixed arrays instead of slices.
-func SizeOfUbo() uintptr {
+func SizeOfUbo() vk.DeviceSize {
 	m, _ := vector_math.NewMat(4, 4)
-	return uintptr(m.ByteSize() * 2)
+	return vk.DeviceSize(m.ByteSize() * 2)
 }
 
 func (u *UniformBufferObject) Bytes() []byte {

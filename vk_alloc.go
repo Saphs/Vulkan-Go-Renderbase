@@ -13,6 +13,9 @@ import (
 type Buffer struct {
 	handle    vk.Buffer
 	deviceMem vk.DeviceMemory
+	size      vk.DeviceSize
+	usage     vk.BufferUsageFlags
+	props     vk.MemoryPropertyFlags
 }
 
 func CreateBuffer(dc *DeviceContext, size vk.DeviceSize, usage vk.BufferUsageFlags, props vk.MemoryPropertyFlags) *Buffer {
@@ -57,7 +60,40 @@ func CreateBuffer(dc *DeviceContext, size vk.DeviceSize, usage vk.BufferUsageFla
 	return &Buffer{
 		handle:    buf,
 		deviceMem: deviceMem,
+		size:      size,
+		usage:     usage,
+		props:     props,
 	}
+}
+
+// CopyToDeviceBuffer is a convenience method to simplify the process of mapping device memory to CPU memory,
+// copy bytes over to the GPU and unmapping the memory again. This requires the buffer to:
+// - have the stated usage: vk.BufferUsageTransferSrcBit
+// - be: vk.MemoryPropertyHostVisibleBit and vk.MemoryPropertyHostCoherentBit
+func CopyToDeviceBuffer(dc *DeviceContext, deviceBuf *Buffer, payload []byte) {
+	// Check the memory is accessible by the CPU
+	hasTransferUsage := deviceBuf.usage&vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit) != 0
+	isHostVisCoh := deviceBuf.props&vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit) != 0
+	if !(hasTransferUsage && isHostVisCoh) {
+		log.Panicf("Cant copy to device buffer as buffer is not suitable")
+	}
+	// check for size mismatches - this function only allows to copy a "full buffer" worth of payload starting at offset = 0
+	if deviceBuf.size != vk.DeviceSize(uint64(len(payload))) {
+		log.Panicf("Cant copy to device buffer. Buffer and payload not of equal size.")
+	}
+	// Map -> copy -> Unmap
+	var pData unsafe.Pointer
+	err := vk.Error(vk.MapMemory(dc.device, deviceBuf.deviceMem, 0, deviceBuf.size, 0, &pData))
+	if err != nil {
+		log.Panicf("Failed to map device memory")
+	}
+	vk.Memcopy(pData, payload)
+	vk.UnmapMemory(dc.device, deviceBuf.deviceMem)
+}
+
+func DestroyBuffer(dc *DeviceContext, buffer *Buffer) {
+	vk.DestroyBuffer(dc.device, buffer.handle, nil)
+	vk.FreeMemory(dc.device, buffer.deviceMem, nil)
 }
 
 type TextureImage struct {
