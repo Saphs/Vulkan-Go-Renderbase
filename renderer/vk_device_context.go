@@ -1,4 +1,4 @@
-package main
+package renderer
 
 import (
 	"GPU_fluid_simulation/tooling"
@@ -6,6 +6,16 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 	"log"
 )
+
+const ENABLE_VALIDATION = true
+
+var VALIDATION_LAYERS = []string{
+	"VK_LAYER_KHRONOS_validation",
+}
+
+var DEVICE_EXTENSIONS = []string{
+	"VK_KHR_swapchain",
+}
 
 // DeviceContext represents the interfacing objects between the SDL window, the Hardware running Vulkan
 // and the rest of the rendering engine. Its main purpose is to encapsulate the corresponding objects

@@ -1,4 +1,4 @@
-package main
+package renderer
 
 import (
 	"GPU_fluid_simulation/tooling"

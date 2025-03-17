@@ -1,4 +1,4 @@
-package main
+package renderer
 
 import (
 	vk "github.com/goki/vulkan"

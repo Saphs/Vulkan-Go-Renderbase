@@ -3,6 +3,7 @@ package main
 import "C"
 import (
 	"GPU_fluid_simulation/model"
+	"GPU_fluid_simulation/renderer"
 	"github.com/veandco/go-sdl2/sdl"
 	vm "local/vector_math"
 	"log"
@@ -10,20 +11,6 @@ import (
 	"runtime"
 	"time"
 )
-
-const ENABLE_VALIDATION = true
-
-var VALIDATION_LAYERS = []string{
-	"VK_LAYER_KHRONOS_validation",
-}
-
-var DEVICE_EXTENSIONS = []string{
-	"VK_KHR_swapchain",
-}
-
-const PROGRAM_NAME = "GPU fluid simulation"
-const WINDOW_WIDTH, WINDOW_HEIGHT int32 = 1280, 720
-const MAX_FRAMES_IN_FLIGHT = 3
 
 const MOV_UNITS_PER_SEC = 5
 const MOUSE_SENSITIVITY = 0.5
@@ -38,17 +25,17 @@ func init() {
 var dtDraw = time.Now()
 var currentlyPressed []sdl.Keycode
 
-func onIteration(event sdl.Event, c *Core) {
+func onIteration(event sdl.Event, c *renderer.Core) {
 	switch ev := event.(type) {
 	case *sdl.MouseMotionEvent:
 		if ev.State == 4 {
 			if ev.YRel != 0 {
-				yRotAxis := c.cam.LookDir.Cross(c.cam.Up).ScalarMul(-float32(ev.YRel))
-				c.cam.Turn(MOUSE_SENSITIVITY, yRotAxis)
+				yRotAxis := c.Cam.LookDir.Cross(c.Cam.Up).ScalarMul(-float32(ev.YRel))
+				c.Cam.Turn(MOUSE_SENSITIVITY, yRotAxis)
 			}
 			if ev.XRel != 0 {
-				xRotAxis := c.cam.Up.ScalarMul(-float32(ev.XRel))
-				c.cam.Turn(MOUSE_SENSITIVITY, xRotAxis)
+				xRotAxis := c.Cam.Up.ScalarMul(-float32(ev.XRel))
+				c.Cam.Turn(MOUSE_SENSITIVITY, xRotAxis)
 			}
 		}
 	case *sdl.KeyboardEvent:
@@ -57,27 +44,27 @@ func onIteration(event sdl.Event, c *Core) {
 			switch ev.Keysym.Sym {
 			case sdl.K_1:
 				var newProj int
-				if c.cam.ProjectionType == model.CAM_PERSPECTIVE_PROJECTION {
+				if c.Cam.ProjectionType == model.CAM_PERSPECTIVE_PROJECTION {
 					newProj = model.CAM_ORTHOGRAPHIC_PROJECTION
 				} else {
 					newProj = model.CAM_PERSPECTIVE_PROJECTION
 				}
 				log.Printf("Switching projection to -> %d", newProj)
-				c.cam.ProjectionType = newProj
+				c.Cam.ProjectionType = newProj
 			case sdl.K_2:
-				if c.cam.LookTarget != nil {
-					c.cam.LookTarget = nil
-					log.Printf("Free camera resumed at Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
+				if c.Cam.LookTarget != nil {
+					c.Cam.LookTarget = nil
+					log.Printf("Free camera resumed at Pos:%v, LookDir:%v", c.Cam.Pos, c.Cam.LookDir)
 				} else {
-					c.cam.SetTarget(vm.Vec3{})
-					log.Printf("Locked camera to Pos:%v, LookTarget:%v", c.cam.Pos, c.cam.LookTarget)
+					c.Cam.SetTarget(vm.Vec3{})
+					log.Printf("Locked camera to Pos:%v, LookTarget:%v", c.Cam.Pos, c.Cam.LookTarget)
 				}
 			case sdl.K_3:
 				// Reset camera
-				c.cam.Pos = vm.Vec3{Z: -3}
-				c.cam.LookDir = vm.Vec3{Z: 1}
-				c.cam.LookTarget = nil
-				log.Printf("Reset camera to Pos:%v, LookDir:%v", c.cam.Pos, c.cam.LookDir)
+				c.Cam.Pos = vm.Vec3{Z: -3}
+				c.Cam.LookDir = vm.Vec3{Z: 1}
+				c.Cam.LookTarget = nil
+				log.Printf("Reset camera to Pos:%v, LookDir:%v", c.Cam.Pos, c.Cam.LookDir)
 			}
 		}
 		if ev.Type == sdl.KEYDOWN {
@@ -86,7 +73,7 @@ func onIteration(event sdl.Event, c *Core) {
 	}
 }
 
-func onDraw(elapsed time.Duration, c *Core) {
+func onDraw(elapsed time.Duration, c *renderer.Core) {
 	drawLast := dtDraw
 	dtDraw = time.Now()
 	delta := dtDraw.Sub(drawLast)
@@ -110,22 +97,22 @@ func onDraw(elapsed time.Duration, c *Core) {
 		switch key {
 		case sdl.K_w:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.LookDir.ScalarMul(movScale))
+			c.Cam.Move(c.Cam.LookDir.ScalarMul(movScale))
 		case sdl.K_s:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.LookDir.ScalarMul(-movScale))
+			c.Cam.Move(c.Cam.LookDir.ScalarMul(-movScale))
 		case sdl.K_d:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(movScale))
+			c.Cam.Move(c.Cam.LookDir.Cross(c.Cam.Up).ScalarMul(movScale))
 		case sdl.K_a:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.LookDir.Cross(c.cam.Up).ScalarMul(-movScale))
+			c.Cam.Move(c.Cam.LookDir.Cross(c.Cam.Up).ScalarMul(-movScale))
 		case sdl.K_SPACE:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.Up.ScalarMul(movScale))
+			c.Cam.Move(c.Cam.Up.ScalarMul(movScale))
 		case sdl.K_LSHIFT:
 			movScale := float32(delta.Seconds()) * MOV_UNITS_PER_SEC
-			c.cam.Move(c.cam.Up.ScalarMul(-movScale))
+			c.Cam.Move(c.Cam.Up.ScalarMul(-movScale))
 		}
 
 	}
@@ -158,14 +145,14 @@ func main() {
 	myModel := model.NewCubeModel("Cube 1")
 	myModel2 := model.NewCubeModel("Cube 2")
 
-	core := NewRenderCore()
+	core := renderer.NewRenderCore()
 	core.DefaultCam()
 	core.AddToScene(myModel)
 	core.AddToScene(myModel2)
-	core.loop(
+	core.Loop(
 		onIteration,
 		onDraw,
 	)
 	core.ClearScene()
-	core.destroy()
+	core.Destroy()
 }

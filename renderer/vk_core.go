@@ -1,4 +1,4 @@
-package main
+package renderer
 
 import "C"
 import (
@@ -15,8 +15,9 @@ import (
 	"unsafe"
 )
 
-const FPS_TARGET float64 = 144
-const INV_FPS_TARGET float64 = 6.9
+const PROGRAM_NAME = "GPU fluid simulation"
+const WINDOW_WIDTH, WINDOW_HEIGHT int32 = 1280, 720
+const MAX_FRAMES_IN_FLIGHT = 3
 
 type Core struct {
 	// OS/Window level
@@ -54,7 +55,7 @@ type Core struct {
 	uniformBuffersMapped []unsafe.Pointer
 
 	// 3D World
-	cam    *model.Camera
+	Cam    *model.Camera
 	models []*model.Model
 
 	textureImage     vk.Image
@@ -83,7 +84,7 @@ func (c *Core) DefaultCam() {
 	cam := model.NewCamera(45, 0.1, 100)
 	cam.ProjectionType = model.CAM_PERSPECTIVE_PROJECTION
 	cam.Move(vm.Vec3{X: 0, Z: -2})
-	c.cam = cam
+	c.Cam = cam
 }
 
 func (c *Core) FindInScene(name string) (*model.Model, error) {
@@ -152,11 +153,11 @@ type iterationHandler func(sdl.Event, *Core)
 
 type drawHandler func(time.Duration, *Core)
 
-// loop this function represents the event-loop for user interaction and currently also contains
+// Loop this function represents the event-loop for user interaction and currently also contains
 // the primary draw call that renders each frame. The whole purpose of this function is to provide
 // a neat interface for call backs and all basic functionality a well-behaved app should have. E.g.:
 // Not rendering if minimized, close on Window 'close button', close on ESC key.
-func (c *Core) loop(ih iterationHandler, dh drawHandler) {
+func (c *Core) Loop(ih iterationHandler, dh drawHandler) {
 	t0 := time.Now()
 	frames := 0
 	var event sdl.Event
@@ -195,7 +196,7 @@ func (c *Core) loop(ih iterationHandler, dh drawHandler) {
 	log.Printf("Elapsed: %v, rough avg fps: %v fps", dt, float64(frames)/dt.Seconds())
 }
 
-func (c *Core) destroy() {
+func (c *Core) Destroy() {
 	// If user has not cleaned up all models manually, warn and remove them now
 	if len(c.models) > 0 {
 		log.Printf("Leftover models in render core!: %v", len(c.models))
@@ -1240,10 +1241,10 @@ func (c *Core) createDescriptorSets() {
 }
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
-	c.cam.Aspect = c.swapChain.Aspect
+	c.Cam.Aspect = c.swapChain.Aspect
 	ubo := model.UniformBufferObject{
-		View:       c.cam.GetView(),
-		Projection: c.cam.GetProjection(),
+		View:       c.Cam.GetView(),
+		Projection: c.Cam.GetProjection(),
 	}
 	vk.Memcopy(c.uniformBuffersMapped[frameIdx], ubo.Bytes())
 }
