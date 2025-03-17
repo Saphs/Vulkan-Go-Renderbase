@@ -20,15 +20,15 @@ const INV_FPS_TARGET float64 = 6.9
 
 type Core struct {
 	// OS/Window level
-	win           *sdl.Window
-	winResized    bool
-	winMinimized  bool
-	winClose      bool
-	deviceContext *DeviceContext
-	device        *vk.Device
+	win          *sdl.Window
+	winResized   bool
+	winMinimized bool
+	winClose     bool
+	deviceCtx    *DeviceContext
+	device       *vk.Device
 
 	// Target level
-	swapChainStruct *SwapChain
+	swapChain *SwapChain
 
 	// Drawing infrastructure level
 	renderPass          vk.RenderPass
@@ -73,9 +73,9 @@ func NewRenderCore() *Core {
 	w := initSDLWindow()
 	initVulkan()
 	c := &Core{
-		win:           w,
-		deviceContext: NewDeviceContext(w),
+		win: w,
 	}
+	c.Initialize()
 	return c
 }
 
@@ -129,9 +129,9 @@ func (c *Core) DestroyModelBuffers(model *model.Model) {
 }
 
 func (c *Core) Initialize() {
-	c.device = c.deviceContext.init()
-	c.swapChainStruct = NewSwapChain(c.deviceContext)
-	//c.createSwapChain()
+	c.deviceCtx = NewDeviceContext(c.win)
+	c.device = &c.deviceCtx.device
+	c.swapChain = NewSwapChain(c.deviceCtx)
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
@@ -233,7 +233,7 @@ func (c *Core) destroy() {
 	vk.DestroyPipelineLayout(*c.device, c.pipelineLayout, nil)
 	vk.DestroyRenderPass(*c.device, c.renderPass, nil)
 
-	c.deviceContext.destroy()
+	c.deviceCtx.destroy()
 	err := c.win.Destroy()
 	if err != nil {
 		log.Fatal(err)
@@ -245,7 +245,7 @@ func (c *Core) destroySwapChainAndDerivatives() {
 	vk.DestroyImage(*c.device, c.depthImage, nil)
 	vk.FreeMemory(*c.device, c.depthImageMem, nil)
 
-	c.swapChainStruct.destroy(c.deviceContext)
+	c.swapChain.destroy(c.deviceCtx)
 }
 
 // Bootstrapping / Initialization code
@@ -284,7 +284,7 @@ func initVulkan() {
 }
 
 func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
-	return CreateImageViewDC(c.deviceContext, image, format, aspectFlags)
+	return CreateImageViewDC(c.deviceCtx, image, format, aspectFlags)
 }
 
 func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
@@ -319,7 +319,7 @@ func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspe
 func (c *Core) createRenderPass() {
 	colorAttachment := vk.AttachmentDescription{
 		Flags:          0,
-		Format:         c.swapChainStruct.Format.Format,
+		Format:         c.swapChain.Format.Format,
 		Samples:        vk.SampleCount1Bit,
 		LoadOp:         vk.AttachmentLoadOpClear,
 		StoreOp:        vk.AttachmentStoreOpStore,
@@ -557,7 +557,7 @@ func (c *Core) createGraphicsPipeline() {
 }
 
 func (c *Core) createFrameBuffers() {
-	c.swapChainStruct.CreateFrameBuffers(c.deviceContext, c.renderPass, &c.depthImageView)
+	c.swapChain.CreateFrameBuffers(c.deviceCtx, c.renderPass, &c.depthImageView)
 }
 
 func (c *Core) createCommandPool() {
@@ -565,7 +565,7 @@ func (c *Core) createCommandPool() {
 		SType:            vk.StructureTypeCommandPoolCreateInfo,
 		PNext:            nil,
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
-		QueueFamilyIndex: *c.deviceContext.qFamilies.graphicsFamily,
+		QueueFamilyIndex: *c.deviceCtx.qFamilies.graphicsFamily,
 	}
 	commandPool, err := tooling.VkCreateCommandPool(*c.device, &poolInfo, nil)
 	if err != nil {
@@ -622,7 +622,7 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetVBufferSize())
 	stgBuf := CreateBuffer(
-		c.deviceContext,
+		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
@@ -639,7 +639,7 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Create vertex buffer
 	vertBuf := CreateBuffer(
-		c.deviceContext,
+		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
@@ -661,7 +661,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetIdxBufferSize())
 	stgBuf := CreateBuffer(
-		c.deviceContext,
+		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
@@ -678,7 +678,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Create vertex buffer
 	idxBuf := CreateBuffer(
-		c.deviceContext,
+		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageIndexBufferBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
@@ -843,13 +843,13 @@ func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
 		SignalSemaphoreCount: 0,
 		PSignalSemaphores:    nil,
 	}
-	vk.QueueSubmit(c.deviceContext.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
-	vk.QueueWaitIdle(c.deviceContext.graphicsQ)
+	vk.QueueSubmit(c.deviceCtx.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
+	vk.QueueWaitIdle(c.deviceCtx.graphicsQ)
 	vk.FreeCommandBuffers(*c.device, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
 }
 
 func (c *Core) createTexture() {
-	path := "textures/statue-1275469_1280.jpg"
+	path := "textures/facebook.jpg"
 	img, err := stbi.Load(path)
 	if err != nil {
 		log.Panicf("Failed to load %s: %v", path, err)
@@ -861,7 +861,7 @@ func (c *Core) createTexture() {
 	log.Printf("Loaded image %s (w: %dp, h:%d) %d Byte", path, w, h, imgSize)
 
 	stgBuf := CreateBuffer(
-		c.deviceContext,
+		c.deviceCtx,
 		imgSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
@@ -876,7 +876,7 @@ func (c *Core) createTexture() {
 	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
 
 	c.textureImage, c.textureImageMem = CreateImage(
-		c.deviceContext,
+		c.deviceCtx,
 		uint32(w),
 		uint32(h),
 		vk.FormatR8g8b8a8Srgb,
@@ -910,7 +910,7 @@ func (c *Core) createTextureSampler() {
 		AddressModeW:            vk.SamplerAddressModeRepeat,
 		MipLodBias:              0.0,
 		AnisotropyEnable:        vk.True,
-		MaxAnisotropy:           c.deviceContext.pdProps.Limits.MaxSamplerAnisotropy,
+		MaxAnisotropy:           c.deviceCtx.pdProps.Limits.MaxSamplerAnisotropy,
 		CompareEnable:           vk.False,
 		CompareOp:               vk.CompareOpAlways,
 		MinLod:                  0.0,
@@ -928,9 +928,9 @@ func (c *Core) createTextureSampler() {
 func (c *Core) createDepthResources() {
 	dFormat := c.findDepthFormat()
 	dImg, dImgMem := CreateImage(
-		c.deviceContext,
-		c.swapChainStruct.Extend.Width,
-		c.swapChainStruct.Extend.Height,
+		c.deviceCtx,
+		c.swapChain.Extend.Width,
+		c.swapChain.Extend.Height,
 		dFormat,
 		vk.ImageTilingOptimal,
 		vk.ImageUsageFlags(vk.ImageUsageDepthStencilAttachmentBit),
@@ -959,7 +959,7 @@ func hasStencilComponent(format vk.Format) bool {
 func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
 	for _, format := range candidates {
 		var fProps vk.FormatProperties
-		vk.GetPhysicalDeviceFormatProperties(c.deviceContext.physicalDevice, format, &fProps)
+		vk.GetPhysicalDeviceFormatProperties(c.deviceCtx.physicalDevice, format, &fProps)
 		fProps.Deref()
 		if tiling == vk.ImageTilingLinear && (fProps.LinearTilingFeatures&features) == features {
 			return format
@@ -987,7 +987,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	// Start render pass
 	renderArea := vk.Rect2D{
 		Offset: vk.Offset2D{X: 0, Y: 0},
-		Extent: c.swapChainStruct.Extend,
+		Extent: c.swapChain.Extend,
 	}
 	clearValues := []vk.ClearValue{
 		vk.NewClearValue([]float32{0.01, 0.01, 0.01, 1}), // color
@@ -997,7 +997,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		SType:           vk.StructureTypeRenderPassBeginInfo,
 		PNext:           nil,
 		RenderPass:      c.renderPass,
-		Framebuffer:     c.swapChainStruct.FrameBuffers[imageIdx],
+		Framebuffer:     c.swapChain.FrameBuffers[imageIdx],
 		RenderArea:      renderArea,
 		ClearValueCount: uint32(len(clearValues)),
 		PClearValues:    clearValues,
@@ -1010,8 +1010,8 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		{
 			X:        0,
 			Y:        0,
-			Width:    float32(c.swapChainStruct.Extend.Width),
-			Height:   float32(c.swapChainStruct.Extend.Height),
+			Width:    float32(c.swapChain.Extend.Width),
+			Height:   float32(c.swapChain.Extend.Height),
 			MinDepth: 0,
 			MaxDepth: 1.0,
 		},
@@ -1021,7 +1021,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	scissor := []vk.Rect2D{
 		{
 			Offset: vk.Offset2D{X: 0, Y: 0},
-			Extent: c.swapChainStruct.Extend,
+			Extent: c.swapChain.Extend,
 		},
 	}
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
@@ -1048,7 +1048,7 @@ func (c *Core) drawFrame() {
 	vk.WaitForFences(*c.device, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]}, vk.True, math.MaxUint64)
 
 	var imgIdx uint32
-	result := vk.AcquireNextImage(*c.device, c.swapChainStruct.Handle, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
+	result := vk.AcquireNextImage(*c.device, c.swapChain.Handle, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
 	if result == vk.ErrorOutOfDate {
 		c.recreateSwapChain()
@@ -1078,7 +1078,7 @@ func (c *Core) drawFrame() {
 		SignalSemaphoreCount: 1,
 		PSignalSemaphores:    []vk.Semaphore{c.renderFinishedSems[c.currentFrameIdx]},
 	}
-	if vk.QueueSubmit(c.deviceContext.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, c.inFlightFens[c.currentFrameIdx]) != vk.Success {
+	if vk.QueueSubmit(c.deviceCtx.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, c.inFlightFens[c.currentFrameIdx]) != vk.Success {
 		log.Panicf("Failed to submit commandbuffer")
 	}
 
@@ -1088,11 +1088,11 @@ func (c *Core) drawFrame() {
 		WaitSemaphoreCount: 1,
 		PWaitSemaphores:    []vk.Semaphore{c.renderFinishedSems[c.currentFrameIdx]},
 		SwapchainCount:     1,
-		PSwapchains:        []vk.Swapchain{c.swapChainStruct.Handle},
+		PSwapchains:        []vk.Swapchain{c.swapChain.Handle},
 		PImageIndices:      []uint32{imgIdx},
 		PResults:           nil,
 	}
-	result = vk.QueuePresent(c.deviceContext.presentQ, &presentInfo)
+	result = vk.QueuePresent(c.deviceCtx.presentQ, &presentInfo)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
 	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.winResized {
 		c.winResized = false
@@ -1107,7 +1107,7 @@ func (c *Core) drawFrame() {
 func (c *Core) recreateSwapChain() {
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
-	c.swapChainStruct = NewSwapChain(c.deviceContext)
+	c.swapChain = NewSwapChain(c.deviceCtx)
 	c.createDepthResources()
 	c.createFrameBuffers()
 }
@@ -1152,7 +1152,7 @@ func (c *Core) createUniformBuffers() {
 	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
 		uboBuf := CreateBuffer(
-			c.deviceContext,
+			c.deviceCtx,
 			uboBufSize,
 			vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit),
 			memProps,
@@ -1247,7 +1247,7 @@ func (c *Core) createDescriptorSets() {
 }
 
 func (c *Core) updateUniformBuffer(frameIdx int32) {
-	c.cam.Aspect = c.swapChainStruct.Aspect
+	c.cam.Aspect = c.swapChain.Aspect
 	ubo := model.UniformBufferObject{
 		View:       c.cam.GetView(),
 		Projection: c.cam.GetProjection(),

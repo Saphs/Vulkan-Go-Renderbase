@@ -160,7 +160,6 @@ func main() {
 
 	core := NewRenderCore()
 	core.DefaultCam()
-	core.Initialize()
 	core.AddToScene(myModel)
 	core.AddToScene(myModel2)
 	core.loop(

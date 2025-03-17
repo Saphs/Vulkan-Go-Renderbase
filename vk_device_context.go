@@ -26,20 +26,14 @@ type DeviceContext struct {
 }
 
 func NewDeviceContext(w *sdl.Window) *DeviceContext {
-	return &DeviceContext{
+	dc := &DeviceContext{
 		win: w,
 	}
-}
-
-// init call all required creation methods to start using a vk.Device capable of rendering graphics
-// to a window created by SDL. It returns the associated vk.Device that was just selected as a pointer
-// reference for convenience.
-func (dc *DeviceContext) init() *vk.Device {
 	dc.createInstance()
 	dc.createSurface()
 	dc.selectPhysicalDevice()
 	dc.createLogicalDevice()
-	return &dc.device
+	return dc
 }
 
 // destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
