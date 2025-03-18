@@ -1,13 +1,12 @@
 package model
 
 import (
-	"GPU_fluid_simulation/tooling"
+	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"local/vector_math"
 )
 
-// UniformBufferObject a uniform buffer object as a tightly packed struct that will be transferred to the GPU
-// a wrapping type is used to access and update it
+// UniformBufferObject a uniform buffer object as a tightly packed struct that will be transferred to the GPU.
 type UniformBufferObject struct {
 	View       vector_math.Mat
 	Projection vector_math.Mat // 192byte calculated size
@@ -22,5 +21,5 @@ func SizeOfUbo() vk.DeviceSize {
 }
 
 func (u *UniformBufferObject) Bytes() []byte {
-	return append(append(tooling.ToByteArr(u.View.Unroll())), tooling.ToByteArr(u.Projection.Unroll())...)
+	return append(append(common.ToByteArr(u.View.Unroll())), common.ToByteArr(u.Projection.Unroll())...)
 }

@@ -1,7 +1,7 @@
 package renderer
 
 import (
-	"GPU_fluid_simulation/tooling"
+	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"log"
 )
@@ -11,13 +11,13 @@ import (
 func checkInstanceExtensionSupport(requiredInstanceExt []string) {
 	supportedExt := readInstanceExtensionProperties()
 	log.Printf("Required instance extensions: %v", requiredInstanceExt)
-	log.Printf("Available extensions (%d):\n%v", len(supportedExt), tooling.TableStringExtensionProps(supportedExt))
+	log.Printf("Available extensions (%d):\n%v", len(supportedExt), common.TableStringExtensionProps(supportedExt))
 	supportedExtNames := make([]string, len(supportedExt))
 	for i, ext := range supportedExt {
 		supportedExtNames[i] = vk.ToString(ext.ExtensionName[:])
 	}
 
-	if !tooling.AllOfAinB(requiredInstanceExt, supportedExtNames) {
+	if !common.AllOfAinB(requiredInstanceExt, supportedExtNames) {
 		log.Panicf("At least one required instance extension is not supported")
 	} else {
 		log.Println("Success - All required instance extensions are supported")
@@ -27,14 +27,14 @@ func checkInstanceExtensionSupport(requiredInstanceExt []string) {
 func checkValidationLayerSupport(requiredLayers []string) {
 	supportedLayers := readInstanceLayerProperties()
 	log.Printf("Desired validation layers: %v", requiredLayers)
-	log.Printf("Supported layers (%d):\n%v", len(supportedLayers), tooling.TableStringLayerProps(supportedLayers))
+	log.Printf("Supported layers (%d):\n%v", len(supportedLayers), common.TableStringLayerProps(supportedLayers))
 
 	supLayerNames := make([]string, len(supportedLayers))
 	for i, l := range supportedLayers {
 		supLayerNames[i] = vk.ToString(l.LayerName[:])
 	}
 
-	if !tooling.AllOfAinB(requiredLayers, supLayerNames) {
+	if !common.AllOfAinB(requiredLayers, supLayerNames) {
 		log.Panicf("At least one desired layers are supported")
 	} else {
 		log.Println("Success - All desired validation layers are supported")
@@ -50,7 +50,7 @@ func checkDeviceExtensionSupport(pd vk.PhysicalDevice, requiredDeviceExt []strin
 	for i, ext := range supportedExt {
 		supportedExtNames[i] = vk.ToString(ext.ExtensionName[:])
 	}
-	return tooling.AllOfAinB(requiredDeviceExt, supportedExtNames)
+	return common.AllOfAinB(requiredDeviceExt, supportedExtNames)
 }
 
 func checkSwapChainAdequacy(pd vk.PhysicalDevice, surface vk.Surface) bool {

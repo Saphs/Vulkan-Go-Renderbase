@@ -1,7 +1,7 @@
 package renderer
 
 import (
-	"GPU_fluid_simulation/tooling"
+	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
 	"log"
@@ -78,13 +78,13 @@ func (dc *DeviceContext) createInstance() {
 		EnabledLayerCount:       0,
 		PpEnabledLayerNames:     nil,
 		EnabledExtensionCount:   uint32(len(requiredExtensions)),
-		PpEnabledExtensionNames: tooling.TerminatedStrs(requiredExtensions),
+		PpEnabledExtensionNames: common.TerminatedStrs(requiredExtensions),
 	}
 	if ENABLE_VALIDATION {
 		createInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
-		createInfo.PpEnabledLayerNames = tooling.TerminatedStrs(VALIDATION_LAYERS)
+		createInfo.PpEnabledLayerNames = common.TerminatedStrs(VALIDATION_LAYERS)
 	}
-	ins, err := tooling.VkCreateInstance(createInfo, nil)
+	ins, err := common.VkCreateInstance(createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create vk instance, due to: %v", err)
 	}
@@ -92,7 +92,7 @@ func (dc *DeviceContext) createInstance() {
 }
 
 func (dc *DeviceContext) createSurface() {
-	surf, err := tooling.SdlCreateVkSurface(dc.win, dc.vkInstance)
+	surf, err := common.SdlCreateVkSurface(dc.win, dc.vkInstance)
 	if err != nil {
 		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
 	}
@@ -131,7 +131,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
 	pdFeatures := readPhysicalDeviceFeatures(pd)
 	pdQueueFams := readQueueFamilies(pd)
 
-	log.Printf("Physical divece\n%s", tooling.ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
+	log.Printf("Physical divece\n%s", common.ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
 
 	indices, err := findQueueFamilies(pd, surface)
 	if err != nil {
@@ -166,24 +166,24 @@ func (dc *DeviceContext) createLogicalDevice() {
 		EnabledLayerCount:       0,
 		PpEnabledLayerNames:     nil,
 		EnabledExtensionCount:   uint32(len(DEVICE_EXTENSIONS)),
-		PpEnabledExtensionNames: tooling.TerminatedStrs(DEVICE_EXTENSIONS),
+		PpEnabledExtensionNames: common.TerminatedStrs(DEVICE_EXTENSIONS),
 		PEnabledFeatures:        []vk.PhysicalDeviceFeatures{deviceFeatures},
 	}
 	if ENABLE_VALIDATION {
 		deviceCreatInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
-		deviceCreatInfo.PpEnabledLayerNames = tooling.TerminatedStrs(VALIDATION_LAYERS)
+		deviceCreatInfo.PpEnabledLayerNames = common.TerminatedStrs(VALIDATION_LAYERS)
 	}
 
 	var err error
-	dc.device, err = tooling.VkCreateDevice(dc.physicalDevice, deviceCreatInfo, nil)
+	dc.device, err = common.VkCreateDevice(dc.physicalDevice, deviceCreatInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create logical device due to: %s", "err")
 	}
-	dc.graphicsQ, err = tooling.VkGetDeviceQueue(dc.device, dc.qFamilies.graphicsFamily, 0)
+	dc.graphicsQ, err = common.VkGetDeviceQueue(dc.device, dc.qFamilies.graphicsFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'graphics' device queue: %s", err)
 	}
-	dc.presentQ, err = tooling.VkGetDeviceQueue(dc.device, dc.qFamilies.presentFamily, 0)
+	dc.presentQ, err = common.VkGetDeviceQueue(dc.device, dc.qFamilies.presentFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'present' device queue: %s", err)
 	}

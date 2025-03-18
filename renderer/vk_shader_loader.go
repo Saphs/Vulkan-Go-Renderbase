@@ -1,7 +1,7 @@
 package renderer
 
 import (
-	"GPU_fluid_simulation/tooling"
+	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"log"
 	"os"
@@ -64,7 +64,7 @@ func readShaderCode(d vk.Device, shaderFile string) vk.ShaderModule {
 		PNext:    nil,
 		Flags:    0,
 		CodeSize: shaderCodeLen,
-		PCode:    tooling.AsUint32Arr(shaderCodeB),
+		PCode:    common.AsUint32Arr(shaderCodeB),
 	}
 	var shaderModule vk.ShaderModule
 	if vk.CreateShaderModule(d, createInfo, nil, &shaderModule) != vk.Success {

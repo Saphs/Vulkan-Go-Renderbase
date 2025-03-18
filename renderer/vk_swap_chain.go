@@ -1,7 +1,7 @@
 package renderer
 
 import (
-	"GPU_fluid_simulation/tooling"
+	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"log"
 )
@@ -52,7 +52,7 @@ func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderP
 			Height:          sc.Extend.Height,
 			Layers:          1,
 		}
-		fb, err := tooling.VkCreateFrameBuffer(dc.device, &framebufferInfo, nil)
+		fb, err := common.VkCreateFrameBuffer(dc.device, &framebufferInfo, nil)
 		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
@@ -114,7 +114,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext) {
 	}
 
 	var err error
-	sc.Handle, err = tooling.VkCreateSwapChain(dc.device, createInfo, nil)
+	sc.Handle, err = common.VkCreateSwapChain(dc.device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create swapchain due to: %s", "err")
 	}

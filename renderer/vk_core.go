@@ -2,8 +2,8 @@ package renderer
 
 import "C"
 import (
+	"GPU_fluid_simulation/common"
 	"GPU_fluid_simulation/model"
-	"GPU_fluid_simulation/tooling"
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
@@ -310,7 +310,7 @@ func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspe
 			LayerCount:     1,
 		},
 	}
-	imgView, err := tooling.VkCreateImageView(dc.device, createInfo, nil)
+	imgView, err := common.VkCreateImageView(dc.device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create image view due to: %s", err)
 	}
@@ -381,7 +381,7 @@ func (c *Core) createRenderPass() {
 		PDependencies:   []vk.SubpassDependency{dependency},
 	}
 	var err error
-	c.renderPass, err = tooling.VkCreateRenderPass(*c.device, &renderPassInfo, nil)
+	c.renderPass, err = common.VkCreateRenderPass(*c.device, &renderPassInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create render pass due to: %s", "err")
 	}
@@ -501,7 +501,7 @@ func (c *Core) createGraphicsPipeline() {
 		PushConstantRangeCount: 1,
 		PPushConstantRanges:    []vk.PushConstantRange{modelPushConstantRange},
 	}
-	layouts, err := tooling.VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
+	layouts, err := common.VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create pipeline layout")
 	}
@@ -545,7 +545,7 @@ func (c *Core) createGraphicsPipeline() {
 		BasePipelineIndex:   -1,
 	}
 	pipelineInfos := []vk.GraphicsPipelineCreateInfo{pipelineInfo}
-	pipelines, err := tooling.VkCreateGraphicsPipelines(*c.device, nil, 1, pipelineInfos, nil)
+	pipelines, err := common.VkCreateGraphicsPipelines(*c.device, nil, 1, pipelineInfos, nil)
 	if err != nil {
 		log.Panicf("Failed to create graphics pipeline")
 	}
@@ -568,7 +568,7 @@ func (c *Core) createCommandPool() {
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 		QueueFamilyIndex: *c.deviceCtx.qFamilies.graphicsFamily,
 	}
-	commandPool, err := tooling.VkCreateCommandPool(*c.device, &poolInfo, nil)
+	commandPool, err := common.VkCreateCommandPool(*c.device, &poolInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create command pool")
 	}
@@ -667,7 +667,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, tooling.RawBytes(m.Mesh.VIndices))
+	vk.Memcopy(pData, common.RawBytes(m.Mesh.VIndices))
 	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
 
 	// Create vertex buffer
@@ -1026,7 +1026,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		offsets := []vk.DeviceSize{0}
 		vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
 		vk.CmdBindIndexBuffer(buffer, c.models[i].IndexBuffer, 0, vk.IndexTypeUint32)
-		pPConst := tooling.UnsafeMatPtr(&c.models[i].Mesh.ModelMat)
+		pPConst := common.UnsafeMatPtr(&c.models[i].Mesh.ModelMat)
 		vk.CmdPushConstants(buffer, c.pipelineLayout, vk.ShaderStageFlags(vk.ShaderStageVertexBit), 0, model.ModelPushConstantsSize(), pPConst)
 		vk.CmdDrawIndexed(buffer, uint32(len(c.models[i].Mesh.VIndices)), 1, 0, 0, 0)
 	}
