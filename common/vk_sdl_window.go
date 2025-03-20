@@ -33,6 +33,7 @@ func NewWindow(title string, w int32, h int32, validationLayers []string) *Windo
 	window.initSDLWindow(title, w, h)
 	window.initVulkan()
 	window.createVulkanInstance(len(validationLayers) > 0, validationLayers)
+	window.createSdlVkSurface()
 	log.Printf("Generated SDL/Vulkan window - SDL: %s Vulkan Spec: %s", window.sdlVersion, window.vkVersion)
 	return window
 }
@@ -132,4 +133,12 @@ func checkValidationLayerSupport(requiredLayers []string) {
 	} else {
 		log.Println("Success - All desired validation layers are supported")
 	}
+}
+
+func (w *Window) createSdlVkSurface() {
+	surf, err := SdlCreateVkSurface(w.win, w.inst)
+	if err != nil {
+		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
+	}
+	w.surf = surf
 }
