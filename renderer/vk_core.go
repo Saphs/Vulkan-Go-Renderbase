@@ -136,7 +136,7 @@ func (c *Core) DestroyModelBuffers(model *model.Model) {
 func (c *Core) Initialize() {
 	c.deviceCtx = NewDeviceContext(c.win)
 	c.device = &c.deviceCtx.device
-	c.swapChain = NewSwapChain(c.deviceCtx)
+	c.swapChain = NewSwapChain(c.deviceCtx, c.win)
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
@@ -1105,7 +1105,7 @@ func (c *Core) drawFrame() {
 func (c *Core) recreateSwapChain() {
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
-	c.swapChain = NewSwapChain(c.deviceCtx)
+	c.swapChain = NewSwapChain(c.deviceCtx, c.win)
 	c.createDepthResources()
 	c.createFrameBuffers()
 }

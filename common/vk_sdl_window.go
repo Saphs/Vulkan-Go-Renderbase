@@ -16,8 +16,8 @@ type Window struct {
 	Minimized bool
 	Close     bool
 
-	inst *vk.Instance
-	surf *vk.Surface
+	Inst *vk.Instance
+	Surf *vk.Surface
 }
 
 func NewWindow(title string, w int32, h int32, validationLayers []string) *Window {
@@ -39,7 +39,7 @@ func NewWindow(title string, w int32, h int32, validationLayers []string) *Windo
 }
 
 func (w *Window) Destroy() {
-	vk.DestroyInstance(*w.inst, nil)
+	vk.DestroyInstance(*w.Inst, nil)
 	err := w.Win.Destroy()
 	if err != nil {
 		log.Fatal(err)
@@ -108,7 +108,7 @@ func (w *Window) createVulkanInstance(enableValidation bool, validationLayers []
 	if err != nil {
 		log.Panicf("Failed to create vk instance, due to: %v", err)
 	}
-	w.inst = &ins
+	w.Inst = &ins
 }
 
 func checkInstanceExtensionSupport(requiredInstanceExt []string) {
@@ -136,9 +136,9 @@ func checkValidationLayerSupport(requiredLayers []string) {
 }
 
 func (w *Window) createSdlVkSurface() {
-	surf, err := SdlCreateVkSurface(w.Win, *w.inst)
+	surf, err := SdlCreateVkSurface(w.Win, *w.Inst)
 	if err != nil {
 		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
 	}
-	w.surf = &surf
+	w.Surf = &surf
 }

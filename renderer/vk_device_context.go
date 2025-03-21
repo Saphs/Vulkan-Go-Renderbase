@@ -3,7 +3,6 @@ package renderer
 import (
 	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
-	"github.com/veandco/go-sdl2/sdl"
 	"log"
 )
 
@@ -21,10 +20,6 @@ var DEVICE_EXTENSIONS = []string{
 // and the rest of the rendering engine. Its main purpose is to encapsulate the corresponding objects
 // to make the initialization and teardown of a given application neater.
 type DeviceContext struct {
-	win        *sdl.Window
-	vkInstance vk.Instance
-	vkSurface  vk.Surface
-
 	physicalDevice vk.PhysicalDevice
 	pdProps        vk.PhysicalDeviceProperties
 	pdMemoryProps  vk.PhysicalDeviceMemoryProperties
@@ -36,74 +31,22 @@ type DeviceContext struct {
 }
 
 func NewDeviceContext(w *common.Window) *DeviceContext {
-	dc := &DeviceContext{
-		win: w.Win,
-	}
-	dc.createInstance()
-	dc.createSurface()
-	dc.selectPhysicalDevice()
+	dc := &DeviceContext{}
+	dc.selectPhysicalDevice(w.Inst, w.Surf)
 	dc.createLogicalDevice()
 	return dc
 }
 
 // destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
 func (dc *DeviceContext) destroy() {
-	vk.DestroySurface(dc.vkInstance, dc.vkSurface, nil)
 	vk.DestroyDevice(dc.device, nil)
-	vk.DestroyInstance(dc.vkInstance, nil)
 }
 
-func (dc *DeviceContext) createInstance() {
-	requiredExtensions := dc.win.VulkanGetInstanceExtensions()
-	checkInstanceExtensionSupport(requiredExtensions)
-
-	if ENABLE_VALIDATION {
-		log.Printf("Validation enabled, checking layer support")
-		checkValidationLayerSupport(VALIDATION_LAYERS)
-	}
-	applicationInfo := &vk.ApplicationInfo{
-		SType:              vk.StructureTypeApplicationInfo,
-		PNext:              nil,
-		PApplicationName:   "GPU fluid simulation",
-		ApplicationVersion: vk.MakeVersion(1, 0, 0),
-		PEngineName:        "No Engine",
-		EngineVersion:      vk.MakeVersion(1, 0, 0),
-		ApiVersion:         vk.MakeVersion(1, 0, 0),
-	}
-	createInfo := &vk.InstanceCreateInfo{
-		SType:                   vk.StructureTypeInstanceCreateInfo,
-		PNext:                   nil,
-		Flags:                   0,
-		PApplicationInfo:        applicationInfo,
-		EnabledLayerCount:       0,
-		PpEnabledLayerNames:     nil,
-		EnabledExtensionCount:   uint32(len(requiredExtensions)),
-		PpEnabledExtensionNames: common.TerminatedStrs(requiredExtensions),
-	}
-	if ENABLE_VALIDATION {
-		createInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
-		createInfo.PpEnabledLayerNames = common.TerminatedStrs(VALIDATION_LAYERS)
-	}
-	ins, err := common.VkCreateInstance(createInfo, nil)
-	if err != nil {
-		log.Panicf("Failed to create vk instance, due to: %v", err)
-	}
-	dc.vkInstance = ins
-}
-
-func (dc *DeviceContext) createSurface() {
-	surf, err := common.SdlCreateVkSurface(dc.win, dc.vkInstance)
-	if err != nil {
-		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
-	}
-	dc.vkSurface = surf
-}
-
-func (dc *DeviceContext) selectPhysicalDevice() {
-	availableDevices := readPhysicalDevices(dc.vkInstance)
+func (dc *DeviceContext) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
+	availableDevices := readPhysicalDevices(*in)
 	var pd vk.PhysicalDevice
 	for i := range availableDevices {
-		if isDeviceSuitable(availableDevices[i], dc.vkSurface) {
+		if isDeviceSuitable(availableDevices[i], su) {
 			pd = availableDevices[i]
 			break
 		}
@@ -115,7 +58,7 @@ func (dc *DeviceContext) selectPhysicalDevice() {
 	dc.physicalDevice = pd
 
 	// Also set related member variables for dc.physicalDevice as they are needed later
-	qf, err := findQueueFamilies(dc.physicalDevice, dc.vkSurface)
+	qf, err := findQueueFamilies(dc.physicalDevice, *su)
 	if err != nil {
 		log.Panicf("Failed to read queue families from selected device due to: %s", err)
 	}
@@ -126,14 +69,14 @@ func (dc *DeviceContext) selectPhysicalDevice() {
 	dc.pdMemoryProps = readDeviceMemoryProperties(dc.physicalDevice)
 }
 
-func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
+func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 	pdProps := readPhysicalDeviceProperties(pd)
 	pdFeatures := readPhysicalDeviceFeatures(pd)
 	pdQueueFams := readQueueFamilies(pd)
 
 	log.Printf("Physical divece\n%s", common.ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
 
-	indices, err := findQueueFamilies(pd, surface)
+	indices, err := findQueueFamilies(pd, *su)
 	if err != nil {
 		log.Printf("Failed to get required queue families: %s", err)
 		return false
@@ -146,7 +89,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, surface vk.Surface) bool {
 
 	isSwapChainAdequate := false
 	if extensionsSupported {
-		isSwapChainAdequate = checkSwapChainAdequacy(pd, surface)
+		isSwapChainAdequate = checkSwapChainAdequacy(pd, *su)
 	}
 
 	return isDiscreteGPU && featuresSupported && queuesSupported && extensionsSupported && isSwapChainAdequate

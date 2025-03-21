@@ -21,10 +21,10 @@ type SwapChain struct {
 	FrameBuffers []vk.Framebuffer
 }
 
-func NewSwapChain(dc *DeviceContext) *SwapChain {
+func NewSwapChain(dc *DeviceContext, w *common.Window) *SwapChain {
 	sc := &SwapChain{}
-	sc.chooseConfiguration(dc)
-	sc.createSwapChainHandle(dc)
+	sc.chooseConfiguration(dc, w)
+	sc.createSwapChainHandle(dc, w)
 	sc.readImages(dc)
 	sc.createImageViews(dc)
 
@@ -61,14 +61,14 @@ func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderP
 	log.Printf("Successfully created %d frame buffers %v", len(sc.FrameBuffers), sc.FrameBuffers)
 }
 
-func (sc *SwapChain) chooseConfiguration(dc *DeviceContext) {
-	sc.supDetails = readSwapChainSupportDetails(dc.physicalDevice, dc.vkSurface)
+func (sc *SwapChain) chooseConfiguration(dc *DeviceContext, w *common.Window) {
+	sc.supDetails = readSwapChainSupportDetails(dc.physicalDevice, *w.Surf)
 	sc.Format = sc.supDetails.selectSwapSurfaceFormat(vk.FormatB8g8r8a8Srgb, vk.ColorSpaceSrgbNonlinear)
 	sc.PresentMode = sc.supDetails.selectSwapPresentMode(vk.PresentModeMailbox)
 	sc.Extend = sc.supDetails.selectSwapExtent()
 }
 
-func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext) {
+func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *common.Window) {
 	// Calc reasonable image count for swap chain
 	imgCount := sc.supDetails.capabilities.MinImageCount + 1
 	imgMaxCount := sc.supDetails.capabilities.MaxImageCount
@@ -96,7 +96,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext) {
 		SType:                 vk.StructureTypeSwapchainCreateInfo,
 		PNext:                 nil,
 		Flags:                 0,
-		Surface:               dc.vkSurface,
+		Surface:               *w.Surf,
 		MinImageCount:         imgCount,
 		ImageFormat:           sc.Format.Format,
 		ImageColorSpace:       sc.Format.ColorSpace,
