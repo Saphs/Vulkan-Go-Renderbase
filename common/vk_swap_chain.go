@@ -1,7 +1,6 @@
-package renderer
+package common
 
 import (
-	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"log"
 )
@@ -21,7 +20,7 @@ type SwapChain struct {
 	FrameBuffers []vk.Framebuffer
 }
 
-func NewSwapChain(dc *DeviceContext, w *common.Window) *SwapChain {
+func NewSwapChain(dc *DeviceContext, w *Window) *SwapChain {
 	sc := &SwapChain{}
 	sc.chooseConfiguration(dc, w)
 	sc.createSwapChainHandle(dc, w)
@@ -52,7 +51,7 @@ func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderP
 			Height:          sc.Extend.Height,
 			Layers:          1,
 		}
-		fb, err := common.VkCreateFrameBuffer(dc.device, &framebufferInfo, nil)
+		fb, err := VkCreateFrameBuffer(dc.Device, &framebufferInfo, nil)
 		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
@@ -61,14 +60,14 @@ func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderP
 	log.Printf("Successfully created %d frame buffers %v", len(sc.FrameBuffers), sc.FrameBuffers)
 }
 
-func (sc *SwapChain) chooseConfiguration(dc *DeviceContext, w *common.Window) {
-	sc.supDetails = readSwapChainSupportDetails(dc.physicalDevice, *w.Surf)
+func (sc *SwapChain) chooseConfiguration(dc *DeviceContext, w *Window) {
+	sc.supDetails = ReadSwapChainSupportDetails(dc.PhysicalDevice, *w.Surf)
 	sc.Format = sc.supDetails.selectSwapSurfaceFormat(vk.FormatB8g8r8a8Srgb, vk.ColorSpaceSrgbNonlinear)
 	sc.PresentMode = sc.supDetails.selectSwapPresentMode(vk.PresentModeMailbox)
 	sc.Extend = sc.supDetails.selectSwapExtent()
 }
 
-func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *common.Window) {
+func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *Window) {
 	// Calc reasonable image count for swap chain
 	imgCount := sc.supDetails.capabilities.MinImageCount + 1
 	imgMaxCount := sc.supDetails.capabilities.MaxImageCount
@@ -78,11 +77,11 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *common.Window) 
 
 	// Depending on whether our queue families are the same for graphics and presentation, we need to choose different
 	// swap chain configurations: https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
-	indices := dc.qFamilies
+	indices := dc.QFamilies
 	var sharingMode vk.SharingMode
 	var indexCount uint32
-	qFamIndices := []uint32{*indices.graphicsFamily, *indices.presentFamily}
-	if *indices.graphicsFamily != *indices.presentFamily {
+	qFamIndices := []uint32{*indices.GraphicsFamily, *indices.PresentFamily}
+	if *indices.GraphicsFamily != *indices.PresentFamily {
 		sharingMode = vk.SharingModeConcurrent
 		indexCount = 2
 	} else {
@@ -114,7 +113,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *common.Window) 
 	}
 
 	var err error
-	sc.Handle, err = common.VkCreateSwapChain(dc.device, createInfo, nil)
+	sc.Handle, err = VkCreateSwapChain(dc.Device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create swapchain due to: %s", "err")
 	}
@@ -122,7 +121,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *common.Window) 
 }
 
 func (sc *SwapChain) readImages(dc *DeviceContext) {
-	sc.Images = readSwapChainImages(dc.device, sc.Handle)
+	sc.Images = ReadSwapChainImages(dc.Device, sc.Handle)
 	log.Printf("Read resulting image handles: %v", sc.Images)
 }
 
@@ -134,14 +133,14 @@ func (sc *SwapChain) createImageViews(dc *DeviceContext) {
 	log.Printf("Successfully created %d image views %v", len(sc.ImgViews), sc.ImgViews)
 }
 
-func (sc *SwapChain) destroy(dc *DeviceContext) {
+func (sc *SwapChain) Destroy(dc *DeviceContext) {
 	for i := range sc.FrameBuffers {
-		vk.DestroyFramebuffer(dc.device, sc.FrameBuffers[i], nil)
+		vk.DestroyFramebuffer(dc.Device, sc.FrameBuffers[i], nil)
 	}
 	for i := range sc.ImgViews {
-		vk.DestroyImageView(dc.device, sc.ImgViews[i], nil)
+		vk.DestroyImageView(dc.Device, sc.ImgViews[i], nil)
 	}
-	vk.DestroySwapchain(dc.device, sc.Handle, nil)
+	vk.DestroySwapchain(dc.Device, sc.Handle, nil)
 }
 
 type SwapChainDetails struct {
@@ -178,4 +177,40 @@ func (s *SwapChainDetails) selectSwapExtent() vk.Extent2D {
 	// I can return to this later: https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Swap_chain
 	s.capabilities.CurrentExtent.Deref()
 	return s.capabilities.CurrentExtent
+}
+
+func checkSwapChainAdequacy(pd vk.PhysicalDevice, surface vk.Surface) bool {
+	scDetails := ReadSwapChainSupportDetails(pd, surface)
+	log.Printf("Read swap chain details: %v", scDetails)
+	return len(scDetails.formats) > 0 && len(scDetails.presentModes) > 0
+}
+
+// ToDo: Drop temporarily duplicated code. This should belong into and image wrapping file or allocations
+func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+	createInfo := &vk.ImageViewCreateInfo{
+		SType:    vk.StructureTypeImageViewCreateInfo,
+		PNext:    nil,
+		Flags:    0,
+		Image:    image,
+		ViewType: vk.ImageViewType2d,
+		Format:   format,
+		Components: vk.ComponentMapping{
+			R: vk.ComponentSwizzleIdentity,
+			G: vk.ComponentSwizzleIdentity,
+			B: vk.ComponentSwizzleIdentity,
+			A: vk.ComponentSwizzleIdentity,
+		},
+		SubresourceRange: vk.ImageSubresourceRange{
+			AspectMask:     aspectFlags,
+			BaseMipLevel:   0,
+			LevelCount:     1,
+			BaseArrayLayer: 0,
+			LayerCount:     1,
+		},
+	}
+	imgView, err := VkCreateImageView(dc.Device, createInfo, nil)
+	if err != nil {
+		log.Panicf("Failed create image view due to: %s", err)
+	}
+	return imgView
 }

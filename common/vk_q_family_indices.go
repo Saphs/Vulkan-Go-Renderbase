@@ -1,4 +1,4 @@
-package renderer
+package common
 
 import (
 	"errors"
@@ -7,40 +7,40 @@ import (
 )
 
 type QueueFamilyIndices struct {
-	graphicsFamily *uint32
-	presentFamily  *uint32
+	GraphicsFamily *uint32
+	PresentFamily  *uint32
 }
 
 func findQueueFamilies(pd vk.PhysicalDevice, surf vk.Surface) (*QueueFamilyIndices, error) {
 	indices := &QueueFamilyIndices{
-		graphicsFamily: nil,
-		presentFamily:  nil,
+		GraphicsFamily: nil,
+		PresentFamily:  nil,
 	}
-	qFamilies := readQueueFamilies(pd)
+	qFamilies := ReadQueueFamilies(pd)
 	//log.Printf("Queue families:\n%s", tableStringQueueFamilyProps(qFamilies))
 
 	// Find first family supporting VK_QUEUE_GRAPHICS_BIT
 	for i := range qFamilies {
-		if indices.graphicsFamily == nil && isBitSet(qFamilies[i], vk.QueueGraphicsBit) {
-			indices.graphicsFamily = new(uint32)
-			*indices.graphicsFamily = uint32(i)
+		if indices.GraphicsFamily == nil && isBitSet(qFamilies[i], vk.QueueGraphicsBit) {
+			indices.GraphicsFamily = new(uint32)
+			*indices.GraphicsFamily = uint32(i)
 		}
-		if indices.presentFamily == nil {
+		if indices.PresentFamily == nil {
 			var presentSupport vk.Bool32
 			vk.GetPhysicalDeviceSurfaceSupport(pd, uint32(i), surf, &presentSupport)
 			if presentSupport > 0 {
-				indices.presentFamily = new(uint32)
-				*indices.presentFamily = uint32(i)
+				indices.PresentFamily = new(uint32)
+				*indices.PresentFamily = uint32(i)
 			}
 		}
-		if indices.graphicsFamily != nil && indices.presentFamily != nil {
+		if indices.GraphicsFamily != nil && indices.PresentFamily != nil {
 			break
 		}
 	}
-	if indices.graphicsFamily == nil {
+	if indices.GraphicsFamily == nil {
 		return nil, errors.New("unable to find graphics capable queue family")
 	}
-	if indices.presentFamily == nil {
+	if indices.PresentFamily == nil {
 		return nil, errors.New("unable to find present capable queue family for given surface")
 	}
 	return indices, nil
@@ -51,22 +51,22 @@ func isBitSet(qFamily vk.QueueFamilyProperties, bit vk.QueueFlagBits) bool {
 }
 
 func (q *QueueFamilyIndices) isAllQueuesFound() bool {
-	return q.graphicsFamily != nil && q.presentFamily != nil
+	return q.GraphicsFamily != nil && q.PresentFamily != nil
 }
 
 func (q *QueueFamilyIndices) toQueueCreateInfos() []vk.DeviceQueueCreateInfo {
 	var uniqIndices []uint32
-	if q.graphicsFamily == nil {
+	if q.GraphicsFamily == nil {
 		log.Panicf("Failed to access graphics capable queue family index")
 	}
-	if !inList(*q.graphicsFamily, uniqIndices) {
-		uniqIndices = append(uniqIndices, *q.graphicsFamily)
+	if !inList(*q.GraphicsFamily, uniqIndices) {
+		uniqIndices = append(uniqIndices, *q.GraphicsFamily)
 	}
-	if q.presentFamily == nil {
+	if q.PresentFamily == nil {
 		log.Panicf("Failed to access present capable queue family index")
 	}
-	if !inList(*q.presentFamily, uniqIndices) {
-		uniqIndices = append(uniqIndices, *q.presentFamily)
+	if !inList(*q.PresentFamily, uniqIndices) {
+		uniqIndices = append(uniqIndices, *q.PresentFamily)
 	}
 	infos := make([]vk.DeviceQueueCreateInfo, len(uniqIndices))
 	for i := range uniqIndices {

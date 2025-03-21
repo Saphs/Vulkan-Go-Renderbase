@@ -23,11 +23,11 @@ type Core struct {
 	// OS/Window level
 
 	win       *common.Window
-	deviceCtx *DeviceContext
+	deviceCtx *common.DeviceContext
 	device    *vk.Device
 
 	// Target level
-	swapChain *SwapChain
+	swapChain *common.SwapChain
 
 	// Drawing infrastructure level
 	renderPass          vk.RenderPass
@@ -131,9 +131,9 @@ func (c *Core) DestroyModelBuffers(model *model.Model) {
 }
 
 func (c *Core) Initialize() {
-	c.deviceCtx = NewDeviceContext(c.win)
-	c.device = &c.deviceCtx.device
-	c.swapChain = NewSwapChain(c.deviceCtx, c.win)
+	c.deviceCtx = common.NewDeviceContext(c.win)
+	c.device = &c.deviceCtx.Device
+	c.swapChain = common.NewSwapChain(c.deviceCtx, c.win)
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createGraphicsPipeline()
@@ -235,7 +235,7 @@ func (c *Core) Destroy() {
 	vk.DestroyPipelineLayout(*c.device, c.pipelineLayout, nil)
 	vk.DestroyRenderPass(*c.device, c.renderPass, nil)
 
-	c.deviceCtx.destroy()
+	c.deviceCtx.Destroy()
 	err := c.win.Win.Destroy()
 	if err != nil {
 		log.Fatal(err)
@@ -247,7 +247,7 @@ func (c *Core) destroySwapChainAndDerivatives() {
 	vk.DestroyImage(*c.device, c.depthImage, nil)
 	vk.FreeMemory(*c.device, c.depthImageMem, nil)
 
-	c.swapChain.destroy(c.deviceCtx)
+	c.swapChain.Destroy(c.deviceCtx)
 }
 
 // Bootstrapping / Initialization code
@@ -289,7 +289,7 @@ func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.
 	return CreateImageViewDC(c.deviceCtx, image, format, aspectFlags)
 }
 
-func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+func CreateImageViewDC(dc *common.DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
 	createInfo := &vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		PNext:    nil,
@@ -311,7 +311,7 @@ func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspe
 			LayerCount:     1,
 		},
 	}
-	imgView, err := common.VkCreateImageView(dc.device, createInfo, nil)
+	imgView, err := common.VkCreateImageView(dc.Device, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create image view due to: %s", err)
 	}
@@ -567,7 +567,7 @@ func (c *Core) createCommandPool() {
 		SType:            vk.StructureTypeCommandPoolCreateInfo,
 		PNext:            nil,
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
-		QueueFamilyIndex: *c.deviceCtx.qFamilies.graphicsFamily,
+		QueueFamilyIndex: *c.deviceCtx.QFamilies.GraphicsFamily,
 	}
 	commandPool, err := common.VkCreateCommandPool(*c.device, &poolInfo, nil)
 	if err != nil {
@@ -838,8 +838,8 @@ func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
 		SignalSemaphoreCount: 0,
 		PSignalSemaphores:    nil,
 	}
-	vk.QueueSubmit(c.deviceCtx.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
-	vk.QueueWaitIdle(c.deviceCtx.graphicsQ)
+	vk.QueueSubmit(c.deviceCtx.GraphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
+	vk.QueueWaitIdle(c.deviceCtx.GraphicsQ)
 	vk.FreeCommandBuffers(*c.device, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
 }
 
@@ -905,7 +905,7 @@ func (c *Core) createTextureSampler() {
 		AddressModeW:            vk.SamplerAddressModeRepeat,
 		MipLodBias:              0.0,
 		AnisotropyEnable:        vk.True,
-		MaxAnisotropy:           c.deviceCtx.pdProps.Limits.MaxSamplerAnisotropy,
+		MaxAnisotropy:           c.deviceCtx.PdProps.Limits.MaxSamplerAnisotropy,
 		CompareEnable:           vk.False,
 		CompareOp:               vk.CompareOpAlways,
 		MinLod:                  0.0,
@@ -954,7 +954,7 @@ func hasStencilComponent(format vk.Format) bool {
 func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
 	for _, format := range candidates {
 		var fProps vk.FormatProperties
-		vk.GetPhysicalDeviceFormatProperties(c.deviceCtx.physicalDevice, format, &fProps)
+		vk.GetPhysicalDeviceFormatProperties(c.deviceCtx.PhysicalDevice, format, &fProps)
 		fProps.Deref()
 		if tiling == vk.ImageTilingLinear && (fProps.LinearTilingFeatures&features) == features {
 			return format
@@ -1073,7 +1073,7 @@ func (c *Core) drawFrame() {
 		SignalSemaphoreCount: 1,
 		PSignalSemaphores:    []vk.Semaphore{c.renderFinishedSems[c.currentFrameIdx]},
 	}
-	if vk.QueueSubmit(c.deviceCtx.graphicsQ, 1, []vk.SubmitInfo{submitInfo}, c.inFlightFens[c.currentFrameIdx]) != vk.Success {
+	if vk.QueueSubmit(c.deviceCtx.GraphicsQ, 1, []vk.SubmitInfo{submitInfo}, c.inFlightFens[c.currentFrameIdx]) != vk.Success {
 		log.Panicf("Failed to submit commandbuffer")
 	}
 
@@ -1087,7 +1087,7 @@ func (c *Core) drawFrame() {
 		PImageIndices:      []uint32{imgIdx},
 		PResults:           nil,
 	}
-	result = vk.QueuePresent(c.deviceCtx.presentQ, &presentInfo)
+	result = vk.QueuePresent(c.deviceCtx.PresentQ, &presentInfo)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
 	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.win.Resized {
 		c.win.Resized = false
@@ -1102,7 +1102,7 @@ func (c *Core) drawFrame() {
 func (c *Core) recreateSwapChain() {
 	vk.DeviceWaitIdle(*c.device)
 	c.destroySwapChainAndDerivatives()
-	c.swapChain = NewSwapChain(c.deviceCtx, c.win)
+	c.swapChain = common.NewSwapChain(c.deviceCtx, c.win)
 	c.createDepthResources()
 	c.createFrameBuffers()
 }

@@ -1,7 +1,6 @@
-package renderer
+package common
 
 import (
-	"GPU_fluid_simulation/common"
 	vk "github.com/goki/vulkan"
 	"log"
 )
@@ -20,17 +19,17 @@ var DEVICE_EXTENSIONS = []string{
 // and the rest of the rendering engine. Its main purpose is to encapsulate the corresponding objects
 // to make the initialization and teardown of a given application neater.
 type DeviceContext struct {
-	physicalDevice vk.PhysicalDevice
-	pdProps        vk.PhysicalDeviceProperties
-	pdMemoryProps  vk.PhysicalDeviceMemoryProperties
-	qFamilies      QueueFamilyIndices
+	PhysicalDevice vk.PhysicalDevice
+	PdProps        vk.PhysicalDeviceProperties
+	PdMemoryProps  vk.PhysicalDeviceMemoryProperties
+	QFamilies      QueueFamilyIndices
 
-	device    vk.Device
-	graphicsQ vk.Queue
-	presentQ  vk.Queue
+	Device    vk.Device
+	GraphicsQ vk.Queue
+	PresentQ  vk.Queue
 }
 
-func NewDeviceContext(w *common.Window) *DeviceContext {
+func NewDeviceContext(w *Window) *DeviceContext {
 	dc := &DeviceContext{}
 	dc.selectPhysicalDevice(w.Inst, w.Surf)
 	dc.createLogicalDevice()
@@ -38,12 +37,12 @@ func NewDeviceContext(w *common.Window) *DeviceContext {
 }
 
 // destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
-func (dc *DeviceContext) destroy() {
-	vk.DestroyDevice(dc.device, nil)
+func (dc *DeviceContext) Destroy() {
+	vk.DestroyDevice(dc.Device, nil)
 }
 
 func (dc *DeviceContext) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
-	availableDevices := readPhysicalDevices(*in)
+	availableDevices := ReadPhysicalDevices(*in)
 	var pd vk.PhysicalDevice
 	for i := range availableDevices {
 		if isDeviceSuitable(availableDevices[i], su) {
@@ -55,26 +54,26 @@ func (dc *DeviceContext) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 		log.Panicf("No suitable physical device (GPU) found")
 	}
 	log.Printf("Found suitable device")
-	dc.physicalDevice = pd
+	dc.PhysicalDevice = pd
 
 	// Also set related member variables for dc.physicalDevice as they are needed later
-	qf, err := findQueueFamilies(dc.physicalDevice, *su)
+	qf, err := findQueueFamilies(dc.PhysicalDevice, *su)
 	if err != nil {
 		log.Panicf("Failed to read queue families from selected device due to: %s", err)
 	}
-	dc.qFamilies = *qf
-	dc.pdProps = readPhysicalDeviceProperties(dc.physicalDevice)
+	dc.QFamilies = *qf
+	dc.PdProps = ReadPhysicalDeviceProperties(dc.PhysicalDevice)
 	// this is the easiest spot to deref this at the moment
-	dc.pdProps.Limits.Deref()
-	dc.pdMemoryProps = readDeviceMemoryProperties(dc.physicalDevice)
+	dc.PdProps.Limits.Deref()
+	dc.PdMemoryProps = ReadDeviceMemoryProperties(dc.PhysicalDevice)
 }
 
 func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
-	pdProps := readPhysicalDeviceProperties(pd)
-	pdFeatures := readPhysicalDeviceFeatures(pd)
-	pdQueueFams := readQueueFamilies(pd)
+	pdProps := ReadPhysicalDeviceProperties(pd)
+	pdFeatures := ReadPhysicalDeviceFeatures(pd)
+	pdQueueFams := ReadQueueFamilies(pd)
 
-	log.Printf("Physical divece\n%s", common.ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
+	log.Printf("Physical divece\n%s", ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
 
 	indices, err := findQueueFamilies(pd, *su)
 	if err != nil {
@@ -96,7 +95,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 }
 
 func (dc *DeviceContext) createLogicalDevice() {
-	queueInfos := dc.qFamilies.toQueueCreateInfos()
+	queueInfos := dc.QFamilies.toQueueCreateInfos()
 	deviceFeatures := vk.PhysicalDeviceFeatures{ // We explicitly enable anisotropic sampling, more interesting stuff could be added here
 		SamplerAnisotropy: vk.True,
 	}
@@ -109,25 +108,37 @@ func (dc *DeviceContext) createLogicalDevice() {
 		EnabledLayerCount:       0,
 		PpEnabledLayerNames:     nil,
 		EnabledExtensionCount:   uint32(len(DEVICE_EXTENSIONS)),
-		PpEnabledExtensionNames: common.TerminatedStrs(DEVICE_EXTENSIONS),
+		PpEnabledExtensionNames: TerminatedStrs(DEVICE_EXTENSIONS),
 		PEnabledFeatures:        []vk.PhysicalDeviceFeatures{deviceFeatures},
 	}
 	if ENABLE_VALIDATION {
 		deviceCreatInfo.EnabledLayerCount = uint32(len(VALIDATION_LAYERS))
-		deviceCreatInfo.PpEnabledLayerNames = common.TerminatedStrs(VALIDATION_LAYERS)
+		deviceCreatInfo.PpEnabledLayerNames = TerminatedStrs(VALIDATION_LAYERS)
 	}
 
 	var err error
-	dc.device, err = common.VkCreateDevice(dc.physicalDevice, deviceCreatInfo, nil)
+	dc.Device, err = VkCreateDevice(dc.PhysicalDevice, deviceCreatInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create logical device due to: %s", "err")
 	}
-	dc.graphicsQ, err = common.VkGetDeviceQueue(dc.device, dc.qFamilies.graphicsFamily, 0)
+	dc.GraphicsQ, err = VkGetDeviceQueue(dc.Device, dc.QFamilies.GraphicsFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'graphics' device queue: %s", err)
 	}
-	dc.presentQ, err = common.VkGetDeviceQueue(dc.device, dc.qFamilies.presentFamily, 0)
+	dc.PresentQ, err = VkGetDeviceQueue(dc.Device, dc.QFamilies.PresentFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'present' device queue: %s", err)
 	}
+}
+
+func checkDeviceExtensionSupport(pd vk.PhysicalDevice, requiredDeviceExt []string) bool {
+	supportedExt := ReadDeviceExtensionProperties(pd)
+	log.Printf("Required device extensions: %v", requiredDeviceExt)
+	log.Printf("Available device extensions (%d) [...]\n", len(supportedExt))
+	//log.Printf("Available device extensions (%d):\n%v", len(supportedExt), tableStringExtensionProps(supportedExt))
+	supportedExtNames := make([]string, len(supportedExt))
+	for i, ext := range supportedExt {
+		supportedExtNames[i] = vk.ToString(ext.ExtensionName[:])
+	}
+	return AllOfAinB(requiredDeviceExt, supportedExtNames)
 }
