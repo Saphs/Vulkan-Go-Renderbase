@@ -623,7 +623,7 @@ func (c *Core) createSyncObjects() {
 func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetVBufferSize())
-	stgBuf := CreateBuffer(
+	stgBuf := common.CreateBuffer(
 		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
@@ -631,10 +631,10 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	)
 
 	// Copy our vertex data into staging (device) memory
-	CopyToDeviceBuffer(c.deviceCtx, stgBuf, m.GetVBufferBytes())
+	common.CopyToDeviceBuffer(c.deviceCtx, stgBuf, m.GetVBufferBytes())
 
 	// Create vertex buffer
-	vertBuf := CreateBuffer(
+	vertBuf := common.CreateBuffer(
 		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageVertexBufferBit),
@@ -642,20 +642,20 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	)
 	log.Printf(
 		"Created vertex buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
-		m.Name, &vertBuf.handle, &vertBuf.deviceMem, bufSize,
+		m.Name, &vertBuf.Handle, &vertBuf.DeviceMem, bufSize,
 	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stgBuf, vertBuf, bufSize)
-	DestroyBuffer(c.deviceCtx, stgBuf)
+	common.DestroyBuffer(c.deviceCtx, stgBuf)
 
-	return vertBuf.handle, vertBuf.deviceMem
+	return vertBuf.Handle, vertBuf.DeviceMem
 }
 
 func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	// Create staging buffer
 	bufSize := vk.DeviceSize(m.GetIdxBufferSize())
-	stgBuf := CreateBuffer(
+	stgBuf := common.CreateBuffer(
 		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
@@ -664,15 +664,15 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, bufSize, 0, &pData))
+	err := vk.Error(vk.MapMemory(*c.device, stgBuf.DeviceMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, common.RawBytes(m.Mesh.VIndices))
-	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
+	vk.UnmapMemory(*c.device, stgBuf.DeviceMem)
 
 	// Create vertex buffer
-	idxBuf := CreateBuffer(
+	idxBuf := common.CreateBuffer(
 		c.deviceCtx,
 		bufSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferDstBit|vk.BufferUsageIndexBufferBit),
@@ -680,19 +680,19 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	)
 	log.Printf(
 		"Created index buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
-		m.Name, &idxBuf.handle, &idxBuf.deviceMem, bufSize,
+		m.Name, &idxBuf.Handle, &idxBuf.DeviceMem, bufSize,
 	)
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stgBuf, idxBuf, bufSize)
-	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
-	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
+	vk.DestroyBuffer(*c.device, stgBuf.Handle, nil)
+	vk.FreeMemory(*c.device, stgBuf.DeviceMem, nil)
 
-	return idxBuf.handle, idxBuf.deviceMem
+	return idxBuf.Handle, idxBuf.DeviceMem
 }
 
-func (c *Core) copyBuffer(src *Buffer, dst *Buffer, s vk.DeviceSize) {
-	c.copyVkBuffer(src.handle, dst.handle, s)
+func (c *Core) copyBuffer(src *common.Buffer, dst *common.Buffer, s vk.DeviceSize) {
+	c.copyVkBuffer(src.Handle, dst.Handle, s)
 }
 
 // copyVkBuffer is a subroutine that prepares a command buffer that is then executed on the device.
@@ -855,7 +855,7 @@ func (c *Core) createTexture() {
 	imgSize := vk.DeviceSize(w * h * bytesPerPixel)
 	log.Printf("Loaded image %s (w: %dp, h:%d) %d Byte", path, w, h, imgSize)
 
-	stgBuf := CreateBuffer(
+	stgBuf := common.CreateBuffer(
 		c.deviceCtx,
 		imgSize,
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
@@ -863,14 +863,14 @@ func (c *Core) createTexture() {
 	)
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err = vk.Error(vk.MapMemory(*c.device, stgBuf.deviceMem, 0, imgSize, 0, &pData))
+	err = vk.Error(vk.MapMemory(*c.device, stgBuf.DeviceMem, 0, imgSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, img.Pix)
-	vk.UnmapMemory(*c.device, stgBuf.deviceMem)
+	vk.UnmapMemory(*c.device, stgBuf.DeviceMem)
 
-	c.textureImage, c.textureImageMem = CreateImage(
+	c.textureImage, c.textureImageMem = common.CreateImage(
 		c.deviceCtx,
 		uint32(w),
 		uint32(h),
@@ -881,11 +881,11 @@ func (c *Core) createTexture() {
 	)
 
 	c.transitionImageLayout(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageLayoutUndefined, vk.ImageLayoutTransferDstOptimal)
-	c.copyBufferToImage(stgBuf.handle, c.textureImage, uint32(w), uint32(h))
+	c.copyBufferToImage(stgBuf.Handle, c.textureImage, uint32(w), uint32(h))
 	c.transitionImageLayout(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageLayoutTransferDstOptimal, vk.ImageLayoutShaderReadOnlyOptimal)
 
-	vk.DestroyBuffer(*c.device, stgBuf.handle, nil)
-	vk.FreeMemory(*c.device, stgBuf.deviceMem, nil)
+	vk.DestroyBuffer(*c.device, stgBuf.Handle, nil)
+	vk.FreeMemory(*c.device, stgBuf.DeviceMem, nil)
 }
 
 func (c *Core) createTextureViews() {
@@ -922,7 +922,7 @@ func (c *Core) createTextureSampler() {
 
 func (c *Core) createDepthResources() {
 	dFormat := c.findDepthFormat()
-	dImg, dImgMem := CreateImage(
+	dImg, dImgMem := common.CreateImage(
 		c.deviceCtx,
 		c.swapChain.Extend.Width,
 		c.swapChain.Extend.Height,
@@ -1146,14 +1146,14 @@ func (c *Core) createUniformBuffers() {
 
 	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
-		uboBuf := CreateBuffer(
+		uboBuf := common.CreateBuffer(
 			c.deviceCtx,
 			uboBufSize,
 			vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit),
 			memProps,
 		)
-		c.uniformBuffers[i] = uboBuf.handle
-		c.uniformBufferMems[i] = uboBuf.deviceMem
+		c.uniformBuffers[i] = uboBuf.Handle
+		c.uniformBufferMems[i] = uboBuf.DeviceMem
 		vk.MapMemory(*c.device, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
 	}
 }

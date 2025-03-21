@@ -166,3 +166,17 @@ func ReadDeviceExtensionProperties(pd vk.PhysicalDevice) []vk.ExtensionPropertie
 	}
 	return extensionProperties
 }
+
+func ReadBufferMemoryRequirements(device vk.Device, b vk.Buffer) vk.MemoryRequirements {
+	var memRequirements vk.MemoryRequirements
+	vk.GetBufferMemoryRequirements(device, b, &memRequirements)
+	memRequirements.Deref()
+	return memRequirements
+}
+
+func ReadImageMemoryRequirements(device vk.Device, img vk.Image) vk.MemoryRequirements {
+	var memRequirements vk.MemoryRequirements
+	vk.GetImageMemoryRequirements(device, img, &memRequirements)
+	memRequirements.Deref()
+	return memRequirements
+}
