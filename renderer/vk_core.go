@@ -21,7 +21,8 @@ const MAX_FRAMES_IN_FLIGHT = 3
 
 type Core struct {
 	// OS/Window level
-	win          *sdl.Window
+
+	win          *common.Window
 	winResized   bool
 	winMinimized bool
 	winClose     bool
@@ -71,11 +72,14 @@ type Core struct {
 // Externally facing functions
 
 func NewRenderCore() *Core {
-	w := initSDLWindow()
-	initVulkan()
+	window := common.NewWindow("myTitep", 1280, 720, []string{
+		"VK_LAYER_KHRONOS_validation",
+	})
+	//initVulkan()
 	c := &Core{
-		win: w,
+		win: window,
 	}
+
 	c.Initialize()
 	return c
 }
@@ -235,7 +239,7 @@ func (c *Core) Destroy() {
 	vk.DestroyRenderPass(*c.device, c.renderPass, nil)
 
 	c.deviceCtx.destroy()
-	err := c.win.Destroy()
+	err := c.win.Win.Destroy()
 	if err != nil {
 		log.Fatal(err)
 	}

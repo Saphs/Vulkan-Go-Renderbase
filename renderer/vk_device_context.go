@@ -35,9 +35,9 @@ type DeviceContext struct {
 	presentQ  vk.Queue
 }
 
-func NewDeviceContext(w *sdl.Window) *DeviceContext {
+func NewDeviceContext(w *common.Window) *DeviceContext {
 	dc := &DeviceContext{
-		win: w,
+		win: w.Win,
 	}
 	dc.createInstance()
 	dc.createSurface()

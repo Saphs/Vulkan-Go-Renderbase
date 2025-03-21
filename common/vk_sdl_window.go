@@ -11,7 +11,7 @@ type Window struct {
 	sdlVersion string
 	vkVersion  string
 
-	win       *sdl.Window
+	Win       *sdl.Window
 	Resized   bool
 	Minimized bool
 	Close     bool
@@ -40,13 +40,13 @@ func NewWindow(title string, w int32, h int32, validationLayers []string) *Windo
 
 func (w *Window) Destroy() {
 	vk.DestroyInstance(*w.inst, nil)
-	err := w.win.Destroy()
+	err := w.Win.Destroy()
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (w *Window) initSDLWindow(title string, width int32, height int32) *sdl.Window {
+func (w *Window) initSDLWindow(title string, width int32, height int32) {
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		panic("Failed to initialize a SDL !")
 	}
@@ -62,7 +62,7 @@ func (w *Window) initSDLWindow(title string, width int32, height int32) *sdl.Win
 	if err != nil {
 		panic(err)
 	}
-	return win
+	w.Win = win
 }
 
 func (w *Window) initVulkan() {
@@ -74,7 +74,7 @@ func (w *Window) initVulkan() {
 }
 
 func (w *Window) createVulkanInstance(enableValidation bool, validationLayers []string) {
-	requiredExtensions := w.win.VulkanGetInstanceExtensions()
+	requiredExtensions := w.Win.VulkanGetInstanceExtensions()
 	checkInstanceExtensionSupport(requiredExtensions)
 
 	if enableValidation {
@@ -136,9 +136,9 @@ func checkValidationLayerSupport(requiredLayers []string) {
 }
 
 func (w *Window) createSdlVkSurface() {
-	surf, err := SdlCreateVkSurface(w.win, w.inst)
+	surf, err := SdlCreateVkSurface(w.Win, *w.inst)
 	if err != nil {
 		log.Panicf("Failed to create SDL window's Vulkan-surface, due to: %v", err)
 	}
-	w.surf = surf
+	w.surf = &surf
 }
