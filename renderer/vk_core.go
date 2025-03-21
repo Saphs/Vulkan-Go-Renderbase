@@ -22,12 +22,9 @@ const MAX_FRAMES_IN_FLIGHT = 3
 type Core struct {
 	// OS/Window level
 
-	win          *common.Window
-	winResized   bool
-	winMinimized bool
-	winClose     bool
-	deviceCtx    *DeviceContext
-	device       *vk.Device
+	win       *common.Window
+	deviceCtx *DeviceContext
+	device    *vk.Device
 
 	// Target level
 	swapChain *SwapChain
@@ -165,29 +162,29 @@ func (c *Core) Loop(ih iterationHandler, dh drawHandler) {
 	t0 := time.Now()
 	frames := 0
 	var event sdl.Event
-	c.winClose = false
-	for !c.winClose {
+	c.win.Close = false
+	for !c.win.Close {
 		for event = sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			// Doing some basic functionality for basic window handling
 			switch ev := event.(type) {
 			case *sdl.QuitEvent:
-				c.winClose = true
+				c.win.Close = true
 			case *sdl.WindowEvent:
 				if ev.Event == sdl.WINDOWEVENT_RESIZED {
-					c.winResized = true
+					c.win.Resized = true
 				} else if ev.Event == sdl.WINDOWEVENT_MINIMIZED {
-					c.winMinimized = true
+					c.win.Minimized = true
 				} else if ev.Event == sdl.WINDOWEVENT_RESTORED {
-					c.winMinimized = false
+					c.win.Minimized = false
 				}
 			case *sdl.KeyboardEvent:
 				if ev.Keysym.Sym == sdl.K_ESCAPE {
-					c.winClose = true
+					c.win.Close = true
 				}
 			}
 			ih(event, c)
 		}
-		if !c.winMinimized {
+		if !c.win.Minimized {
 			dh(time.Since(t0), c)
 			c.drawFrame()
 			frames++
@@ -1092,8 +1089,8 @@ func (c *Core) drawFrame() {
 	}
 	result = vk.QueuePresent(c.deviceCtx.presentQ, &presentInfo)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
-	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.winResized {
-		c.winResized = false
+	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.win.Resized {
+		c.win.Resized = false
 		c.recreateSwapChain()
 	} else if result != vk.Success {
 		log.Panicf("Failed to present image, QueuePresent(...) result code: %d", result)
