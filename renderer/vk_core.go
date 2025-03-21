@@ -23,7 +23,7 @@ type Core struct {
 	// OS/Window level
 
 	win       *common.Window
-	deviceCtx *common.DeviceContext
+	deviceCtx *common.Device
 	device    *vk.Device
 
 	// Target level
@@ -289,7 +289,7 @@ func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.
 	return CreateImageViewDC(c.deviceCtx, image, format, aspectFlags)
 }
 
-func CreateImageViewDC(dc *common.DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+func CreateImageViewDC(dc *common.Device, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
 	createInfo := &vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		PNext:    nil,

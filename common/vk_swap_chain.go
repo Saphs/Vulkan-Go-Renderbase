@@ -20,7 +20,7 @@ type SwapChain struct {
 	FrameBuffers []vk.Framebuffer
 }
 
-func NewSwapChain(dc *DeviceContext, w *Window) *SwapChain {
+func NewSwapChain(dc *Device, w *Window) *SwapChain {
 	sc := &SwapChain{}
 	sc.chooseConfiguration(dc, w)
 	sc.createSwapChainHandle(dc, w)
@@ -33,7 +33,7 @@ func NewSwapChain(dc *DeviceContext, w *Window) *SwapChain {
 	return sc
 }
 
-func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderPass, depthImageView *vk.ImageView) {
+func (sc *SwapChain) CreateFrameBuffers(dc *Device, renderPass vk.RenderPass, depthImageView *vk.ImageView) {
 	sc.FrameBuffers = make([]vk.Framebuffer, len(sc.ImgViews))
 	for i := range sc.ImgViews {
 		attachments := []vk.ImageView{sc.ImgViews[i]}
@@ -60,14 +60,14 @@ func (sc *SwapChain) CreateFrameBuffers(dc *DeviceContext, renderPass vk.RenderP
 	log.Printf("Successfully created %d frame buffers %v", len(sc.FrameBuffers), sc.FrameBuffers)
 }
 
-func (sc *SwapChain) chooseConfiguration(dc *DeviceContext, w *Window) {
+func (sc *SwapChain) chooseConfiguration(dc *Device, w *Window) {
 	sc.supDetails = ReadSwapChainSupportDetails(dc.PhysicalDevice, *w.Surf)
 	sc.Format = sc.supDetails.selectSwapSurfaceFormat(vk.FormatB8g8r8a8Srgb, vk.ColorSpaceSrgbNonlinear)
 	sc.PresentMode = sc.supDetails.selectSwapPresentMode(vk.PresentModeMailbox)
 	sc.Extend = sc.supDetails.selectSwapExtent()
 }
 
-func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *Window) {
+func (sc *SwapChain) createSwapChainHandle(dc *Device, w *Window) {
 	// Calc reasonable image count for swap chain
 	imgCount := sc.supDetails.capabilities.MinImageCount + 1
 	imgMaxCount := sc.supDetails.capabilities.MaxImageCount
@@ -120,12 +120,12 @@ func (sc *SwapChain) createSwapChainHandle(dc *DeviceContext, w *Window) {
 	log.Println("Successfully created swap chain")
 }
 
-func (sc *SwapChain) readImages(dc *DeviceContext) {
+func (sc *SwapChain) readImages(dc *Device) {
 	sc.Images = ReadSwapChainImages(dc.Device, sc.Handle)
 	log.Printf("Read resulting image handles: %v", sc.Images)
 }
 
-func (sc *SwapChain) createImageViews(dc *DeviceContext) {
+func (sc *SwapChain) createImageViews(dc *Device) {
 	sc.ImgViews = make([]vk.ImageView, len(sc.Images))
 	for i := range sc.Images {
 		sc.ImgViews[i] = CreateImageViewDC(dc, sc.Images[i], sc.Format.Format, vk.ImageAspectFlags(vk.ImageAspectColorBit))
@@ -133,7 +133,7 @@ func (sc *SwapChain) createImageViews(dc *DeviceContext) {
 	log.Printf("Successfully created %d image views %v", len(sc.ImgViews), sc.ImgViews)
 }
 
-func (sc *SwapChain) Destroy(dc *DeviceContext) {
+func (sc *SwapChain) Destroy(dc *Device) {
 	for i := range sc.FrameBuffers {
 		vk.DestroyFramebuffer(dc.Device, sc.FrameBuffers[i], nil)
 	}
@@ -186,7 +186,7 @@ func checkSwapChainAdequacy(pd vk.PhysicalDevice, surface vk.Surface) bool {
 }
 
 // ToDo: Drop temporarily duplicated code. This should belong into and image wrapping file or allocations
-func CreateImageViewDC(dc *DeviceContext, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
+func CreateImageViewDC(dc *Device, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
 	createInfo := &vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		PNext:    nil,

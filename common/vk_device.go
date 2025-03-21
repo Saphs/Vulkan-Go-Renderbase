@@ -15,10 +15,10 @@ var DEVICE_EXTENSIONS = []string{
 	"VK_KHR_swapchain",
 }
 
-// DeviceContext represents the interfacing objects between the SDL window, the Hardware running Vulkan
+// Device represents the interfacing objects between the SDL window, the Hardware running Vulkan
 // and the rest of the rendering engine. Its main purpose is to encapsulate the corresponding objects
 // to make the initialization and teardown of a given application neater.
-type DeviceContext struct {
+type Device struct {
 	PhysicalDevice vk.PhysicalDevice
 	PdProps        vk.PhysicalDeviceProperties
 	PdMemoryProps  vk.PhysicalDeviceMemoryProperties
@@ -29,19 +29,19 @@ type DeviceContext struct {
 	PresentQ  vk.Queue
 }
 
-func NewDeviceContext(w *Window) *DeviceContext {
-	dc := &DeviceContext{}
+func NewDeviceContext(w *Window) *Device {
+	dc := &Device{}
 	dc.selectPhysicalDevice(w.Inst, w.Surf)
 	dc.createLogicalDevice()
 	return dc
 }
 
 // destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
-func (dc *DeviceContext) Destroy() {
+func (dc *Device) Destroy() {
 	vk.DestroyDevice(dc.Device, nil)
 }
 
-func (dc *DeviceContext) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
+func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 	availableDevices := ReadPhysicalDevices(*in)
 	var pd vk.PhysicalDevice
 	for i := range availableDevices {
@@ -94,7 +94,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 	return isDiscreteGPU && featuresSupported && queuesSupported && extensionsSupported && isSwapChainAdequate
 }
 
-func (dc *DeviceContext) createLogicalDevice() {
+func (dc *Device) createLogicalDevice() {
 	queueInfos := dc.QFamilies.toQueueCreateInfos()
 	deviceFeatures := vk.PhysicalDeviceFeatures{ // We explicitly enable anisotropic sampling, more interesting stuff could be added here
 		SamplerAnisotropy: vk.True,
