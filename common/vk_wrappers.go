@@ -5,6 +5,7 @@ import (
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
 	"log"
+	"unsafe"
 )
 
 // Utility functions wrapping the raw go bindings to provide a more go-lang style interface. This should not
@@ -111,4 +112,48 @@ func VkCreateCommandPool(device vk.Device, pCreateInfo *vk.CommandPoolCreateInfo
 	}
 	log.Printf("Successfully created command pool")
 	return cp, nil
+}
+
+func VkCreateBuffer(device vk.Device, pCreateInfo *vk.BufferCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.Buffer, error) {
+	var buf vk.Buffer
+	err := vk.Error(vk.CreateBuffer(device, pCreateInfo, pAllocator, &buf))
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func VkAllocateMemory(device vk.Device, pAllocateInfo *vk.MemoryAllocateInfo, pAllocator *vk.AllocationCallbacks) (vk.DeviceMemory, error) {
+	var dm vk.DeviceMemory
+	err := vk.Error(vk.AllocateMemory(device, pAllocateInfo, pAllocator, &dm))
+	if err != nil {
+		return nil, err
+	}
+	return dm, nil
+}
+
+func VkBindBufferMemory(device vk.Device, buffer vk.Buffer, memory vk.DeviceMemory, memoryOffset vk.DeviceSize) error {
+	err := vk.Error(vk.BindBufferMemory(device, buffer, memory, memoryOffset))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func VkMapMemory(device vk.Device, memory vk.DeviceMemory, offset vk.DeviceSize, size vk.DeviceSize, flags vk.MemoryMapFlags) (unsafe.Pointer, error) {
+	var pData unsafe.Pointer
+	err := vk.Error(vk.MapMemory(device, memory, offset, size, flags, &pData))
+	if err != nil {
+		return nil, err
+	}
+	return pData, nil
+}
+
+func VkCreateImage(device vk.Device, pCreateInfo *vk.ImageCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.Image, error) {
+	var img vk.Image
+	err := vk.Error(vk.CreateImage(device, pCreateInfo, pAllocator, &img))
+	if err != nil {
+		return nil, err
+	}
+	return img, nil
 }

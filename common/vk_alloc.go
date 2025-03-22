@@ -30,8 +30,8 @@ func CreateBuffer(dc *Device, size vk.DeviceSize, usage vk.BufferUsageFlags, pro
 		QueueFamilyIndexCount: 0,
 		PQueueFamilyIndices:   nil,
 	}
-	var buf vk.Buffer
-	err := vk.Error(vk.CreateBuffer(dc.Device, &bufferInfo, nil, &buf))
+
+	buf, err := VkCreateBuffer(dc.Device, &bufferInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create vertex buffer")
 	}
@@ -45,14 +45,13 @@ func CreateBuffer(dc *Device, size vk.DeviceSize, usage vk.BufferUsageFlags, pro
 		AllocationSize:  bufRequirements.Size,
 		MemoryTypeIndex: findMemoryType(dc, bufRequirements.MemoryTypeBits, props),
 	}
-	var deviceMem vk.DeviceMemory
-	err = vk.Error(vk.AllocateMemory(dc.Device, &allocInfo, nil, &deviceMem))
+	deviceMem, err := VkAllocateMemory(dc.Device, &allocInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to allocate vertex buffer memory")
 	}
 
 	// Associate allocated memory with buffer Handle
-	err = vk.Error(vk.BindBufferMemory(dc.Device, buf, deviceMem, 0))
+	err = VkBindBufferMemory(dc.Device, buf, deviceMem, 0)
 	if err != nil {
 		log.Panicf("Failed to bind device memory to buffer Handle")
 	}
@@ -82,12 +81,12 @@ func CopyToDeviceBuffer(dc *Device, deviceBuf *Buffer, payload []byte) {
 		log.Panicf("Cant copy to device buffer. Buffer and payload not of equal Size.")
 	}
 	// Map -> copy -> Unmap
-	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(dc.Device, deviceBuf.DeviceMem, 0, deviceBuf.Size, 0, &pData))
+	pData, err := VkMapMemory(dc.Device, deviceBuf.DeviceMem, 0, deviceBuf.Size, 0)
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
-	vk.Memcopy(pData, payload)
+	bCopied := vk.Memcopy(pData, payload)
+	log.Printf("copied %d bytes from cpu to device", bCopied)
 	vk.UnmapMemory(dc.Device, deviceBuf.DeviceMem)
 }
 
@@ -165,10 +164,11 @@ func CreateImage(dc *Device, w uint32, h uint32, format vk.Format, tiling vk.Ima
 		PQueueFamilyIndices:   nil,
 		InitialLayout:         vk.ImageLayoutUndefined,
 	}
-	var img vk.Image
-	if vk.CreateImage(dc.Device, imageInfo, nil, &img) != vk.Success {
+	img, err := VkCreateImage(dc.Device, imageInfo, nil)
+	if err != nil {
 		log.Panicf("failed to create image!")
 	}
+
 	memRequirements := ReadImageMemoryRequirements(dc.Device, img)
 	allocInfo := &vk.MemoryAllocateInfo{
 		SType:           vk.StructureTypeMemoryAllocateInfo,
@@ -176,9 +176,9 @@ func CreateImage(dc *Device, w uint32, h uint32, format vk.Format, tiling vk.Ima
 		AllocationSize:  memRequirements.Size,
 		MemoryTypeIndex: findMemoryType(dc, memRequirements.MemoryTypeBits, props),
 	}
-	var imgMemory vk.DeviceMemory
-	if vk.AllocateMemory(dc.Device, allocInfo, nil, &imgMemory) != vk.Success {
-		log.Panicf("failed to allocate device memory for image!")
+	imgMemory, err := VkAllocateMemory(dc.Device, allocInfo, nil)
+	if err != nil {
+		log.Panicf("Failed to allocate image device memory")
 	}
 	vk.BindImageMemory(dc.Device, img, imgMemory, 0)
 	return img, imgMemory
