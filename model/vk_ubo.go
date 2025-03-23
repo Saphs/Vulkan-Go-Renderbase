@@ -21,5 +21,5 @@ func SizeOfUbo() vk.DeviceSize {
 }
 
 func (u *UniformBufferObject) Bytes() []byte {
-	return append(append(common.ToByteArr(u.View.Unroll())), common.ToByteArr(u.Projection.Unroll())...)
+	return append(common.RawBytes(u.View.Unroll()), common.RawBytes(u.Projection.Unroll())...)
 }

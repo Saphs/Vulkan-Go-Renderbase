@@ -66,9 +66,9 @@ func readShaderCode(d vk.Device, shaderFile string) vk.ShaderModule {
 		CodeSize: shaderCodeLen,
 		PCode:    common.AsUint32Arr(shaderCodeB),
 	}
-	var shaderModule vk.ShaderModule
-	if vk.CreateShaderModule(d, createInfo, nil, &shaderModule) != vk.Success {
+	module, err := common.VKCreateShaderModule(d, createInfo, nil)
+	if err != nil {
 		log.Panicf("Failed to create shader module: '%s'", shaderFile)
 	}
-	return shaderModule
+	return module
 }

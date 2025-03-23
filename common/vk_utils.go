@@ -29,7 +29,6 @@ func AllOfAinB(a []string, b []string) bool {
 }
 
 // RawBytes writes a given object as its byte representation voiding all type information in the process
-// this is mainly used to be able to put data into vk.Memcopy
 func RawBytes(p interface{}) []byte {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.LittleEndian, p)
@@ -39,13 +38,18 @@ func RawBytes(p interface{}) []byte {
 	return buf.Bytes()
 }
 
-// ToByteArr drops type reference from float array to allow Go to pass an unsafe.Pointer to Vulkan
+// ToByteArr drops type information from a float32 array to allow Go to pass an unsafe.Pointer to Vulkan
+//
+// Deprecated: Discouraged usage in favor of RawBytes function perfermoning the same conversion to a raw byte array
+// without type information in a more readable and generic way. Since the more verbose version of this function, e.g:
+// RawBytes might be significantly slower, until more is known.
+// ToDo: Show execution time differences between ToByteArr and RawBytes
 func ToByteArr(in []float32) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(&in[0])), len(in)*4)
 }
 
 func UnsafeMatPtr(m *vector_math.Mat) unsafe.Pointer {
-	return unsafe.Pointer(&ToByteArr(m.Unroll())[0])
+	return unsafe.Pointer(&RawBytes(m.Unroll())[0])
 }
 
 // TerminatedStr ensures the given string is \x00 terminated as vulkan expects this in certain structs

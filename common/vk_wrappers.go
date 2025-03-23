@@ -157,3 +157,12 @@ func VkCreateImage(device vk.Device, pCreateInfo *vk.ImageCreateInfo, pAllocator
 	}
 	return img, nil
 }
+
+func VKCreateShaderModule(device vk.Device, pCreateInfo *vk.ShaderModuleCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.ShaderModule, error) {
+	var sm vk.ShaderModule
+	err := vk.Error(vk.CreateShaderModule(device, pCreateInfo, pAllocator, &sm))
+	if err != nil {
+		return nil, err
+	}
+	return sm, nil
+}
