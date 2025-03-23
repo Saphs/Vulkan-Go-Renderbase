@@ -7,6 +7,19 @@ import (
 	"log"
 )
 
+const APPLICATION_NAME = "GPU fluid simulation"
+const APP_MAJOR, APP_MINOR, APP_PATCH = 1, 0, 0
+const ENGINE_NAME = "No Engine"
+const ENGINE_MAJOR, ENGINE_MINOR, ENGINE_PATCH = 1, 0, 0
+
+const SDL_MAJOR, SDL_MINOR, SDL_PATCH = int(sdl.MAJOR_VERSION), int(sdl.MINOR_VERSION), int(sdl.PATCHLEVEL)
+
+// Vulkan spec go bindings = v1.0.7, as per: https://github.com/goki/vulkan = 1.3.239
+const VK_SPEC_MAJOR, VK_SPEC_MINOR, VK_SPEC_PATCH int = 1, 3, 239
+
+// Window encapsulates all window handling components and vulkan access objects to talk, to actual draw on screen. It
+// uses SDL for window management and user input, for a Vulkan application. Thus simplifying the process of getting a
+// vk.surface to draw on and interact with.
 type Window struct {
 	sdlVersion string
 	vkVersion  string
@@ -20,15 +33,16 @@ type Window struct {
 	Surf *vk.Surface
 }
 
+// NewWindow constructs a new Window struct by default initializing things, stating some meta information and
+// calling the corresponding init functions for the SDL window, Vulkan API instance and so on. On tear down,
+// we need to destroy the: vk.surface, vk.instance and sdl.window.
 func NewWindow(title string, w int32, h int32, validationLayers []string) *Window {
 	window := &Window{
-		sdlVersion: fmt.Sprintf("v%d.%d.%d", sdl.MAJOR_VERSION, sdl.MINOR_VERSION, sdl.PATCHLEVEL),
-		// go bindings v1.0.7 -> Vulkan spec, as per: https://github.com/goki/vulkan = 1.3.239
-		vkVersion: "v1.3.239",
-
-		Resized:   false,
-		Minimized: false,
-		Close:     false,
+		sdlVersion: fmt.Sprintf("v%d.%d.%d", SDL_MAJOR, SDL_MINOR, SDL_PATCH),
+		vkVersion:  fmt.Sprintf("v%d.%d.%d", VK_SPEC_MAJOR, VK_SPEC_MINOR, VK_SPEC_PATCH),
+		Resized:    false,
+		Minimized:  false,
+		Close:      false,
 	}
 	window.initSDLWindow(title, w, h)
 	window.initVulkan()
@@ -38,7 +52,10 @@ func NewWindow(title string, w int32, h int32, validationLayers []string) *Windo
 	return window
 }
 
+// Destroy is a convenience method to tear down all relevant instances (vk.surface, vk.instance and sdl.window)
+// that have been initialized by itself.
 func (w *Window) Destroy() {
+	vk.DestroySurface(*w.Inst, *w.Surf, nil)
 	vk.DestroyInstance(*w.Inst, nil)
 	err := w.Win.Destroy()
 	if err != nil {
@@ -48,9 +65,9 @@ func (w *Window) Destroy() {
 
 func (w *Window) initSDLWindow(title string, width int32, height int32) {
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
-		panic("Failed to initialize a SDL !")
+		log.Panicf("Failed to initialize SDL: %v", err)
 	}
-	log.Println("Creating SDL window")
+	log.Println("Initialized SDL")
 	win, err := sdl.CreateWindow(
 		title,
 		sdl.WINDOWPOS_UNDEFINED,
@@ -60,16 +77,18 @@ func (w *Window) initSDLWindow(title string, width int32, height int32) {
 		sdl.WINDOW_SHOWN|sdl.WINDOW_RESIZABLE|sdl.WINDOW_VULKAN,
 	)
 	if err != nil {
-		panic(err)
+		log.Panicf("Failed to create SDL window for use with Vulkan: %v", err)
 	}
+	log.Printf("Created SDL window for use with Vulkan. Title: \"%s\", Width: %d, Height: %d", title, width, height)
 	w.Win = win
 }
 
 func (w *Window) initVulkan() {
+	// Find and load Vulkan addresses to be able to call driver level functions via provided mechanism
 	vk.SetGetInstanceProcAddr(sdl.VulkanGetVkGetInstanceProcAddr())
 	err := vk.Init()
 	if err != nil {
-		panic(err)
+		log.Panicf("Failed to initialize Vulkan API: %v", err)
 	}
 }
 
@@ -84,11 +103,11 @@ func (w *Window) createVulkanInstance(enableValidation bool, validationLayers []
 	applicationInfo := &vk.ApplicationInfo{
 		SType:              vk.StructureTypeApplicationInfo,
 		PNext:              nil,
-		PApplicationName:   "GPU fluid simulation",
-		ApplicationVersion: vk.MakeVersion(1, 0, 0),
-		PEngineName:        "No Engine",
-		EngineVersion:      vk.MakeVersion(1, 0, 0),
-		ApiVersion:         vk.MakeVersion(1, 0, 0),
+		PApplicationName:   APPLICATION_NAME,
+		ApplicationVersion: vk.MakeVersion(APP_MAJOR, APP_MINOR, APP_PATCH),
+		PEngineName:        ENGINE_NAME,
+		EngineVersion:      vk.MakeVersion(ENGINE_MAJOR, ENGINE_MINOR, ENGINE_PATCH),
+		ApiVersion:         vk.MakeVersion(VK_SPEC_MAJOR, VK_SPEC_MINOR, VK_SPEC_PATCH),
 	}
 	createInfo := &vk.InstanceCreateInfo{
 		SType:                   vk.StructureTypeInstanceCreateInfo,
@@ -116,7 +135,7 @@ func checkInstanceExtensionSupport(requiredInstanceExt []string) {
 	log.Printf("Required instance extensions: %v", requiredInstanceExt)
 	log.Printf("Available extensions (%d): %v", len(supportedExtNames), supportedExtNames)
 
-	if !AllOfAinB(requiredInstanceExt, supportedExtNames) {
+	if !IsSubset(requiredInstanceExt, supportedExtNames) {
 		log.Panicf("At least one required instance extension is not supported")
 	} else {
 		log.Println("Success - All required instance extensions are supported")
@@ -128,7 +147,7 @@ func checkValidationLayerSupport(requiredLayers []string) {
 	log.Printf("Desired validation layers: %v", requiredLayers)
 	log.Printf("Supported layers (%d): %v", len(supportedLayerNames), supportedLayerNames)
 
-	if !AllOfAinB(requiredLayers, supportedLayerNames) {
+	if !IsSubset(requiredLayers, supportedLayerNames) {
 		log.Panicf("At least one desired layers are supported")
 	} else {
 		log.Println("Success - All desired validation layers are supported")

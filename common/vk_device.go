@@ -15,9 +15,9 @@ var DEVICE_EXTENSIONS = []string{
 	"VK_KHR_swapchain",
 }
 
-// Device represents the interfacing objects between the SDL window, the Hardware running Vulkan
-// and the rest of the rendering engine. Its main purpose is to encapsulate the corresponding objects
-// to make the initialization and teardown of a given application neater.
+// Device encapsulates all device information, bundling vk.PhysicalDevice, vk.Device and their auxiliary information
+// into a neat package. It is meant as the primary way to access the vk.Device information by core rendering components.
+// Thus acting as the first layer of abstraction over raw Vulkan API calls.
 type Device struct {
 	PhysicalDevice vk.PhysicalDevice
 	PdProps        vk.PhysicalDeviceProperties
@@ -29,18 +29,26 @@ type Device struct {
 	PresentQ  vk.Queue
 }
 
-func NewDeviceContext(w *Window) *Device {
+// NewDevice constructs a new Device struct as described above. This includes device selection and is therefore,
+// application specific. Requirements for the GPU we want to work with, are currently (23/03/25) a minimal set imposing
+// only a few common constraint like: Having a graphics and present queue, allowing for anisotropic filtering and
+// supporting basic validation layers.
+func NewDevice(w *Window) *Device {
 	dc := &Device{}
 	dc.selectPhysicalDevice(w.Inst, w.Surf)
 	dc.createLogicalDevice()
 	return dc
 }
 
-// destroy all objects created by itself. It does not destroy the sdl.window object provided for instantiation.
+// Destroy is a convenience function wrapping the vk.DestroyDevice used to destroy the logical device which is the
+// actual resource we need to destroy on teardown.
 func (dc *Device) Destroy() {
 	vk.DestroyDevice(dc.Device, nil)
 }
 
+// ToDo: Reading out the physical device properties (multiple times) is very clunky here. This could/should be
+//
+//	refactored once device selection becomes more stringent.
 func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 	availableDevices := ReadPhysicalDevices(*in)
 	var pd vk.PhysicalDevice
@@ -53,7 +61,7 @@ func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 	if pd == nil {
 		log.Panicf("No suitable physical device (GPU) found")
 	}
-	log.Printf("Found suitable device")
+	log.Printf("Found suitable device: \"%s\"")
 	dc.PhysicalDevice = pd
 
 	// Also set related member variables for dc.physicalDevice as they are needed later
@@ -96,7 +104,8 @@ func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 
 func (dc *Device) createLogicalDevice() {
 	queueInfos := dc.QFamilies.toQueueCreateInfos()
-	deviceFeatures := vk.PhysicalDeviceFeatures{ // We explicitly enable anisotropic sampling, more interesting stuff could be added here
+	// We explicitly enable anisotropic sampling, more interesting stuff could be added here
+	deviceFeatures := vk.PhysicalDeviceFeatures{
 		SamplerAnisotropy: vk.True,
 	}
 	deviceCreatInfo := &vk.DeviceCreateInfo{
@@ -140,5 +149,5 @@ func checkDeviceExtensionSupport(pd vk.PhysicalDevice, requiredDeviceExt []strin
 	for i, ext := range supportedExt {
 		supportedExtNames[i] = vk.ToString(ext.ExtensionName[:])
 	}
-	return AllOfAinB(requiredDeviceExt, supportedExtNames)
+	return IsSubset(requiredDeviceExt, supportedExtNames)
 }

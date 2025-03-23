@@ -10,13 +10,13 @@ import (
 
 // Provides general helper functions for comparisons and conversions
 
-// AllOfAinB comparison function to ensure a given list is fully contains in another. This is
+// IsSubset comparison function to ensure a given list is fully contained in another. This is
 // mainly used to check for extension and layer support during the initialization process.
-func AllOfAinB(a []string, b []string) bool {
-	for _, _a := range a {
+func IsSubset(sub []string, super []string) bool {
+	for _, a := range sub {
 		isIn := false
-		for _, _b := range b {
-			if _a == _b {
+		for _, b := range super {
+			if a == b {
 				isIn = true
 				break
 			}
