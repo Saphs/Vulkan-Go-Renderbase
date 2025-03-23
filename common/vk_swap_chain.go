@@ -51,7 +51,7 @@ func (sc *SwapChain) CreateFrameBuffers(dc *Device, renderPass vk.RenderPass, de
 			Height:          sc.Extend.Height,
 			Layers:          1,
 		}
-		fb, err := VkCreateFrameBuffer(dc.Device, &framebufferInfo, nil)
+		fb, err := VkCreateFrameBuffer(dc.D, &framebufferInfo, nil)
 		if err != nil {
 			log.Panicf("Failed to create frame buffer [%d]", i)
 		}
@@ -61,7 +61,7 @@ func (sc *SwapChain) CreateFrameBuffers(dc *Device, renderPass vk.RenderPass, de
 }
 
 func (sc *SwapChain) chooseConfiguration(dc *Device, w *Window) {
-	sc.supDetails = ReadSwapChainSupportDetails(dc.PhysicalDevice, *w.Surf)
+	sc.supDetails = ReadSwapChainSupportDetails(dc.PD, *w.Surf)
 	sc.Format = sc.supDetails.selectSwapSurfaceFormat(vk.FormatB8g8r8a8Srgb, vk.ColorSpaceSrgbNonlinear)
 	sc.PresentMode = sc.supDetails.selectSwapPresentMode(vk.PresentModeMailbox)
 	sc.Extend = sc.supDetails.selectSwapExtent()
@@ -113,7 +113,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *Device, w *Window) {
 	}
 
 	var err error
-	sc.Handle, err = VkCreateSwapChain(dc.Device, createInfo, nil)
+	sc.Handle, err = VkCreateSwapChain(dc.D, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create swapchain due to: %s", "err")
 	}
@@ -121,7 +121,7 @@ func (sc *SwapChain) createSwapChainHandle(dc *Device, w *Window) {
 }
 
 func (sc *SwapChain) readImages(dc *Device) {
-	sc.Images = ReadSwapChainImages(dc.Device, sc.Handle)
+	sc.Images = ReadSwapChainImages(dc.D, sc.Handle)
 	log.Printf("Read resulting image handles: %v", sc.Images)
 }
 
@@ -135,12 +135,12 @@ func (sc *SwapChain) createImageViews(dc *Device) {
 
 func (sc *SwapChain) Destroy(dc *Device) {
 	for i := range sc.FrameBuffers {
-		vk.DestroyFramebuffer(dc.Device, sc.FrameBuffers[i], nil)
+		vk.DestroyFramebuffer(dc.D, sc.FrameBuffers[i], nil)
 	}
 	for i := range sc.ImgViews {
-		vk.DestroyImageView(dc.Device, sc.ImgViews[i], nil)
+		vk.DestroyImageView(dc.D, sc.ImgViews[i], nil)
 	}
-	vk.DestroySwapchain(dc.Device, sc.Handle, nil)
+	vk.DestroySwapchain(dc.D, sc.Handle, nil)
 }
 
 type SwapChainDetails struct {
@@ -208,7 +208,7 @@ func CreateImageViewDC(dc *Device, image vk.Image, format vk.Format, aspectFlags
 			LayerCount:     1,
 		},
 	}
-	imgView, err := VkCreateImageView(dc.Device, createInfo, nil)
+	imgView, err := VkCreateImageView(dc.D, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create image view due to: %s", err)
 	}

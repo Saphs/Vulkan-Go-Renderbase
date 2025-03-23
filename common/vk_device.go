@@ -19,12 +19,12 @@ var DEVICE_EXTENSIONS = []string{
 // into a neat package. It is meant as the primary way to access the vk.Device information by core rendering components.
 // Thus acting as the first layer of abstraction over raw Vulkan API calls.
 type Device struct {
-	PhysicalDevice vk.PhysicalDevice
-	PdProps        vk.PhysicalDeviceProperties
-	PdMemoryProps  vk.PhysicalDeviceMemoryProperties
-	QFamilies      QueueFamilyIndices
+	PD            vk.PhysicalDevice
+	PdProps       vk.PhysicalDeviceProperties
+	PdMemoryProps vk.PhysicalDeviceMemoryProperties
+	QFamilies     QueueFamilyIndices
 
-	Device    vk.Device
+	D         vk.Device
 	GraphicsQ vk.Queue
 	PresentQ  vk.Queue
 }
@@ -43,7 +43,7 @@ func NewDevice(w *Window) *Device {
 // Destroy is a convenience function wrapping the vk.DestroyDevice used to destroy the logical device which is the
 // actual resource we need to destroy on teardown.
 func (dc *Device) Destroy() {
-	vk.DestroyDevice(dc.Device, nil)
+	vk.DestroyDevice(dc.D, nil)
 }
 
 // ToDo: Reading out the physical device properties (multiple times) is very clunky here. This could/should be
@@ -62,18 +62,18 @@ func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 		log.Panicf("No suitable physical device (GPU) found")
 	}
 	log.Printf("Found suitable device: \"%s\"")
-	dc.PhysicalDevice = pd
+	dc.PD = pd
 
 	// Also set related member variables for dc.physicalDevice as they are needed later
-	qf, err := findQueueFamilies(dc.PhysicalDevice, *su)
+	qf, err := findQueueFamilies(dc.PD, *su)
 	if err != nil {
 		log.Panicf("Failed to read queue families from selected device due to: %s", err)
 	}
 	dc.QFamilies = *qf
-	dc.PdProps = ReadPhysicalDeviceProperties(dc.PhysicalDevice)
+	dc.PdProps = ReadPhysicalDeviceProperties(dc.PD)
 	// this is the easiest spot to deref this at the moment
 	dc.PdProps.Limits.Deref()
-	dc.PdMemoryProps = ReadDeviceMemoryProperties(dc.PhysicalDevice)
+	dc.PdMemoryProps = ReadDeviceMemoryProperties(dc.PD)
 }
 
 func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
@@ -126,15 +126,15 @@ func (dc *Device) createLogicalDevice() {
 	}
 
 	var err error
-	dc.Device, err = VkCreateDevice(dc.PhysicalDevice, deviceCreatInfo, nil)
+	dc.D, err = VkCreateDevice(dc.PD, deviceCreatInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create logical device due to: %s", "err")
 	}
-	dc.GraphicsQ, err = VkGetDeviceQueue(dc.Device, dc.QFamilies.GraphicsFamily, 0)
+	dc.GraphicsQ, err = VkGetDeviceQueue(dc.D, dc.QFamilies.GraphicsFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'graphics' device queue: %s", err)
 	}
-	dc.PresentQ, err = VkGetDeviceQueue(dc.Device, dc.QFamilies.PresentFamily, 0)
+	dc.PresentQ, err = VkGetDeviceQueue(dc.D, dc.QFamilies.PresentFamily, 0)
 	if err != nil {
 		log.Panicf("Failed to get 'present' device queue: %s", err)
 	}

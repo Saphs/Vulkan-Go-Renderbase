@@ -24,7 +24,6 @@ type Core struct {
 
 	win       *com.Window
 	deviceCtx *com.Device
-	device    *vk.Device
 
 	// Target level
 	swapChain *com.SwapChain
@@ -116,7 +115,7 @@ func (c *Core) ClearScene() {
 func (c *Core) RemoveFromScene(model *model.Model) {
 	for i, v := range c.models {
 		if v.Name == model.Name {
-			vk.DeviceWaitIdle(*c.device)
+			vk.DeviceWaitIdle(c.deviceCtx.D)
 			c.DestroyModelBuffers(model)
 			c.models = append(c.models[:i], c.models[i+1:]...)
 		}
@@ -124,15 +123,14 @@ func (c *Core) RemoveFromScene(model *model.Model) {
 }
 
 func (c *Core) DestroyModelBuffers(model *model.Model) {
-	vk.DestroyBuffer(*c.device, model.VertexBuffer, nil)
-	vk.FreeMemory(*c.device, model.VertexBufferMem, nil)
-	vk.DestroyBuffer(*c.device, model.IndexBuffer, nil)
-	vk.FreeMemory(*c.device, model.IndexBufferMem, nil)
+	vk.DestroyBuffer(c.deviceCtx.D, model.VertexBuffer, nil)
+	vk.FreeMemory(c.deviceCtx.D, model.VertexBufferMem, nil)
+	vk.DestroyBuffer(c.deviceCtx.D, model.IndexBuffer, nil)
+	vk.FreeMemory(c.deviceCtx.D, model.IndexBufferMem, nil)
 }
 
 func (c *Core) Initialize() {
 	c.deviceCtx = com.NewDevice(c.win)
-	c.device = &c.deviceCtx.Device
 	c.swapChain = com.NewSwapChain(c.deviceCtx, c.win)
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
@@ -205,44 +203,44 @@ func (c *Core) Destroy() {
 	}
 
 	// We need to wait for the last asynchronous call to finish before tear down
-	vk.DeviceWaitIdle(*c.device)
+	vk.DeviceWaitIdle(c.deviceCtx.D)
 	c.destroySwapChainAndDerivatives()
 
-	vk.DestroySampler(*c.device, c.textureSampler, nil)
-	vk.DestroyImageView(*c.device, c.textureImageView, nil)
-	vk.DestroyImage(*c.device, c.textureImage, nil)
-	vk.FreeMemory(*c.device, c.textureImageMem, nil)
+	vk.DestroySampler(c.deviceCtx.D, c.textureSampler, nil)
+	vk.DestroyImageView(c.deviceCtx.D, c.textureImageView, nil)
+	vk.DestroyImage(c.deviceCtx.D, c.textureImage, nil)
+	vk.FreeMemory(c.deviceCtx.D, c.textureImageMem, nil)
 
 	// Destroy all buffers (application data)
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
-		vk.DestroyBuffer(*c.device, c.uniformBuffers[i], nil)
-		vk.FreeMemory(*c.device, c.uniformBufferMems[i], nil)
+		vk.DestroyBuffer(c.deviceCtx.D, c.uniformBuffers[i], nil)
+		vk.FreeMemory(c.deviceCtx.D, c.uniformBufferMems[i], nil)
 	}
-	vk.DestroyDescriptorPool(*c.device, c.descriptorPool, nil)
-	vk.DestroyDescriptorSetLayout(*c.device, c.descriptorSetLayout, nil)
+	vk.DestroyDescriptorPool(c.deviceCtx.D, c.descriptorPool, nil)
+	vk.DestroyDescriptorSetLayout(c.deviceCtx.D, c.descriptorSetLayout, nil)
 
 	// Destroy all infrastructure up to the sdl window
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
-		vk.DestroySemaphore(*c.device, c.imageAvailableSems[i], nil)
-		vk.DestroySemaphore(*c.device, c.renderFinishedSems[i], nil)
-		vk.DestroyFence(*c.device, c.inFlightFens[i], nil)
+		vk.DestroySemaphore(c.deviceCtx.D, c.imageAvailableSems[i], nil)
+		vk.DestroySemaphore(c.deviceCtx.D, c.renderFinishedSems[i], nil)
+		vk.DestroyFence(c.deviceCtx.D, c.inFlightFens[i], nil)
 	}
-	vk.DestroyCommandPool(*c.device, c.commandPool, nil)
+	vk.DestroyCommandPool(c.deviceCtx.D, c.commandPool, nil)
 
 	for i := range c.pipelines {
-		vk.DestroyPipeline(*c.device, c.pipelines[i], nil)
+		vk.DestroyPipeline(c.deviceCtx.D, c.pipelines[i], nil)
 	}
-	vk.DestroyPipelineLayout(*c.device, c.pipelineLayout, nil)
-	vk.DestroyRenderPass(*c.device, c.renderPass, nil)
+	vk.DestroyPipelineLayout(c.deviceCtx.D, c.pipelineLayout, nil)
+	vk.DestroyRenderPass(c.deviceCtx.D, c.renderPass, nil)
 
 	c.deviceCtx.Destroy()
 	c.win.Destroy()
 }
 
 func (c *Core) destroySwapChainAndDerivatives() {
-	vk.DestroyImageView(*c.device, c.depthImageView, nil)
-	vk.DestroyImage(*c.device, c.depthImage, nil)
-	vk.FreeMemory(*c.device, c.depthImageMem, nil)
+	vk.DestroyImageView(c.deviceCtx.D, c.depthImageView, nil)
+	vk.DestroyImage(c.deviceCtx.D, c.depthImage, nil)
+	vk.FreeMemory(c.deviceCtx.D, c.depthImageMem, nil)
 
 	c.swapChain.Destroy(c.deviceCtx)
 }
@@ -308,7 +306,7 @@ func CreateImageViewDC(dc *com.Device, image vk.Image, format vk.Format, aspectF
 			LayerCount:     1,
 		},
 	}
-	imgView, err := com.VkCreateImageView(dc.Device, createInfo, nil)
+	imgView, err := com.VkCreateImageView(dc.D, createInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create image view due to: %s", err)
 	}
@@ -379,7 +377,7 @@ func (c *Core) createRenderPass() {
 		PDependencies:   []vk.SubpassDependency{dependency},
 	}
 	var err error
-	c.renderPass, err = com.VkCreateRenderPass(*c.device, &renderPassInfo, nil)
+	c.renderPass, err = com.VkCreateRenderPass(c.deviceCtx.D, &renderPassInfo, nil)
 	if err != nil {
 		log.Panicf("Failed create render pass due to: %s", "err")
 	}
@@ -387,8 +385,8 @@ func (c *Core) createRenderPass() {
 }
 
 func (c *Core) createGraphicsPipeline() {
-	vertShaderMod, vertStageInfo := LoadVert(*c.device, "shaders_spv/vert.spv")
-	fragShaderMod, fragStageInfo := LoadFrag(*c.device, "shaders_spv/frag.spv")
+	vertShaderMod, vertStageInfo := LoadVert(c.deviceCtx.D, "shaders_spv/vert.spv")
+	fragShaderMod, fragStageInfo := LoadFrag(c.deviceCtx.D, "shaders_spv/frag.spv")
 	shaderStages := []vk.PipelineShaderStageCreateInfo{vertStageInfo, fragStageInfo}
 	log.Printf("Prepared %d shader stages for pipeline creation: %v", len(shaderStages), shaderStages)
 
@@ -499,7 +497,7 @@ func (c *Core) createGraphicsPipeline() {
 		PushConstantRangeCount: 1,
 		PPushConstantRanges:    []vk.PushConstantRange{modelPushConstantRange},
 	}
-	layouts, err := com.VkCreatePipelineLayout(*c.device, &pipelineLayoutInfo, nil)
+	layouts, err := com.VkCreatePipelineLayout(c.deviceCtx.D, &pipelineLayoutInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create pipeline layout")
 	}
@@ -543,7 +541,7 @@ func (c *Core) createGraphicsPipeline() {
 		BasePipelineIndex:   -1,
 	}
 	pipelineInfos := []vk.GraphicsPipelineCreateInfo{pipelineInfo}
-	pipelines, err := com.VkCreateGraphicsPipelines(*c.device, nil, 1, pipelineInfos, nil)
+	pipelines, err := com.VkCreateGraphicsPipelines(c.deviceCtx.D, nil, 1, pipelineInfos, nil)
 	if err != nil {
 		log.Panicf("Failed to create graphics pipeline")
 	}
@@ -551,8 +549,8 @@ func (c *Core) createGraphicsPipeline() {
 	log.Printf("Successfully created graphics pipeline")
 
 	// Explicitly done right after pipeline creation
-	DeleteShaderMod(*c.device, vertShaderMod)
-	DeleteShaderMod(*c.device, fragShaderMod)
+	DeleteShaderMod(c.deviceCtx.D, vertShaderMod)
+	DeleteShaderMod(c.deviceCtx.D, fragShaderMod)
 }
 
 func (c *Core) createFrameBuffers() {
@@ -566,7 +564,7 @@ func (c *Core) createCommandPool() {
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 		QueueFamilyIndex: *c.deviceCtx.QFamilies.GraphicsFamily,
 	}
-	commandPool, err := com.VkCreateCommandPool(*c.device, &poolInfo, nil)
+	commandPool, err := com.VkCreateCommandPool(c.deviceCtx.D, &poolInfo, nil)
 	if err != nil {
 		log.Panicf("Failed to create command pool")
 	}
@@ -584,7 +582,7 @@ func (c *Core) createCommandBuffers() {
 		CommandBufferCount: uint32(len(buffers)),
 	}
 
-	if vk.AllocateCommandBuffers(*c.device, &cbAllocateInfo, buffers) != vk.Success {
+	if vk.AllocateCommandBuffers(c.deviceCtx.D, &cbAllocateInfo, buffers) != vk.Success {
 		log.Panicf("Failed to allocate command buffers")
 	}
 	log.Printf("Successfully allocated %d command buffers", len(buffers))
@@ -606,9 +604,9 @@ func (c *Core) createSyncObjects() {
 		Flags: vk.FenceCreateFlags(vk.FenceCreateSignaledBit),
 	}
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
-		if vk.CreateSemaphore(*c.device, &semCreateInfo, nil, &ias[i]) != vk.Success ||
-			vk.CreateSemaphore(*c.device, &semCreateInfo, nil, &rfs[i]) != vk.Success ||
-			vk.CreateFence(*c.device, &fenCreateInfo, nil, &iff[i]) != vk.Success {
+		if vk.CreateSemaphore(c.deviceCtx.D, &semCreateInfo, nil, &ias[i]) != vk.Success ||
+			vk.CreateSemaphore(c.deviceCtx.D, &semCreateInfo, nil, &rfs[i]) != vk.Success ||
+			vk.CreateFence(c.deviceCtx.D, &fenCreateInfo, nil, &iff[i]) != vk.Success {
 			log.Panicf("Failed tocreate sync objects")
 		}
 	}
@@ -661,12 +659,12 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(*c.device, stgBuf.DeviceMem, 0, bufSize, 0, &pData))
+	err := vk.Error(vk.MapMemory(c.deviceCtx.D, stgBuf.DeviceMem, 0, bufSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, com.RawBytes(m.Mesh.VIndices))
-	vk.UnmapMemory(*c.device, stgBuf.DeviceMem)
+	vk.UnmapMemory(c.deviceCtx.D, stgBuf.DeviceMem)
 
 	// Create vertex buffer
 	idxBuf := com.CreateBuffer(
@@ -682,8 +680,8 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 
 	// Move memory to vertex buffer & delete staging buffer afterwards
 	c.copyBuffer(stgBuf, idxBuf, bufSize)
-	vk.DestroyBuffer(*c.device, stgBuf.Handle, nil)
-	vk.FreeMemory(*c.device, stgBuf.DeviceMem, nil)
+	vk.DestroyBuffer(c.deviceCtx.D, stgBuf.Handle, nil)
+	vk.FreeMemory(c.deviceCtx.D, stgBuf.DeviceMem, nil)
 
 	return idxBuf.Handle, idxBuf.DeviceMem
 }
@@ -809,7 +807,7 @@ func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
 		CommandBufferCount: 1,
 	}
 	cmdBuffers := make([]vk.CommandBuffer, 1)
-	vk.AllocateCommandBuffers(*c.device, &allocInfo, cmdBuffers)
+	vk.AllocateCommandBuffers(c.deviceCtx.D, &allocInfo, cmdBuffers)
 
 	beginInfo := vk.CommandBufferBeginInfo{
 		SType:            vk.StructureTypeCommandBufferBeginInfo,
@@ -837,7 +835,7 @@ func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
 	}
 	vk.QueueSubmit(c.deviceCtx.GraphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
 	vk.QueueWaitIdle(c.deviceCtx.GraphicsQ)
-	vk.FreeCommandBuffers(*c.device, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
+	vk.FreeCommandBuffers(c.deviceCtx.D, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
 }
 
 func (c *Core) createTexture() {
@@ -860,12 +858,12 @@ func (c *Core) createTexture() {
 	)
 	// Map staging memory - copy our vertex data into staging - unmap staging again
 	var pData unsafe.Pointer
-	err = vk.Error(vk.MapMemory(*c.device, stgBuf.DeviceMem, 0, imgSize, 0, &pData))
+	err = vk.Error(vk.MapMemory(c.deviceCtx.D, stgBuf.DeviceMem, 0, imgSize, 0, &pData))
 	if err != nil {
 		log.Panicf("Failed to map device memory")
 	}
 	vk.Memcopy(pData, img.Pix)
-	vk.UnmapMemory(*c.device, stgBuf.DeviceMem)
+	vk.UnmapMemory(c.deviceCtx.D, stgBuf.DeviceMem)
 
 	c.textureImage, c.textureImageMem = com.CreateImage(
 		c.deviceCtx,
@@ -881,8 +879,8 @@ func (c *Core) createTexture() {
 	c.copyBufferToImage(stgBuf.Handle, c.textureImage, uint32(w), uint32(h))
 	c.transitionImageLayout(c.textureImage, vk.FormatR8g8b8a8Srgb, vk.ImageLayoutTransferDstOptimal, vk.ImageLayoutShaderReadOnlyOptimal)
 
-	vk.DestroyBuffer(*c.device, stgBuf.Handle, nil)
-	vk.FreeMemory(*c.device, stgBuf.DeviceMem, nil)
+	vk.DestroyBuffer(c.deviceCtx.D, stgBuf.Handle, nil)
+	vk.FreeMemory(c.deviceCtx.D, stgBuf.DeviceMem, nil)
 }
 
 func (c *Core) createTextureViews() {
@@ -911,7 +909,7 @@ func (c *Core) createTextureSampler() {
 		UnnormalizedCoordinates: vk.False,
 	}
 	var sampler vk.Sampler
-	if vk.CreateSampler(*c.device, samplerInfo, nil, &sampler) != vk.Success {
+	if vk.CreateSampler(c.deviceCtx.D, samplerInfo, nil, &sampler) != vk.Success {
 		log.Panicf("Failed to create texture sampler")
 	}
 	c.textureSampler = sampler
@@ -951,7 +949,7 @@ func hasStencilComponent(format vk.Format) bool {
 func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling, features vk.FormatFeatureFlags) vk.Format {
 	for _, format := range candidates {
 		var fProps vk.FormatProperties
-		vk.GetPhysicalDeviceFormatProperties(c.deviceCtx.PhysicalDevice, format, &fProps)
+		vk.GetPhysicalDeviceFormatProperties(c.deviceCtx.PD, format, &fProps)
 		fProps.Deref()
 		if tiling == vk.ImageTilingLinear && (fProps.LinearTilingFeatures&features) == features {
 			return format
@@ -1037,10 +1035,10 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 
 func (c *Core) drawFrame() {
 	// Wait for frame to be ready - signalled by the inFlightFens
-	vk.WaitForFences(*c.device, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]}, vk.True, math.MaxUint64)
+	vk.WaitForFences(c.deviceCtx.D, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]}, vk.True, math.MaxUint64)
 
 	var imgIdx uint32
-	result := vk.AcquireNextImage(*c.device, c.swapChain.Handle, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
+	result := vk.AcquireNextImage(c.deviceCtx.D, c.swapChain.Handle, math.MaxUint64, c.imageAvailableSems[c.currentFrameIdx], nil, &imgIdx)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
 	if result == vk.ErrorOutOfDate {
 		c.recreateSwapChain()
@@ -1050,7 +1048,7 @@ func (c *Core) drawFrame() {
 	}
 
 	// Reset the fence only if we are actually going to execute work that will put the fence into the signalled state
-	vk.ResetFences(*c.device, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]})
+	vk.ResetFences(c.deviceCtx.D, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]})
 
 	vk.ResetCommandBuffer(c.commandBuffers[c.currentFrameIdx], 0)
 	c.recordCommandBuffer(c.commandBuffers[c.currentFrameIdx], imgIdx)
@@ -1097,7 +1095,7 @@ func (c *Core) drawFrame() {
 }
 
 func (c *Core) recreateSwapChain() {
-	vk.DeviceWaitIdle(*c.device)
+	vk.DeviceWaitIdle(c.deviceCtx.D)
 	c.destroySwapChainAndDerivatives()
 	c.swapChain = com.NewSwapChain(c.deviceCtx, c.win)
 	c.createDepthResources()
@@ -1127,7 +1125,7 @@ func (c *Core) createDescriptorSetLayout() {
 		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, textureSamplerLayoutBinding},
 	}
 	var dsl vk.DescriptorSetLayout
-	if vk.CreateDescriptorSetLayout(*c.device, &layoutInfo, nil, &dsl) != vk.Success {
+	if vk.CreateDescriptorSetLayout(c.deviceCtx.D, &layoutInfo, nil, &dsl) != vk.Success {
 		log.Panicf("Failed to create descriptor set layout")
 	}
 	c.descriptorSetLayout = dsl
@@ -1151,7 +1149,7 @@ func (c *Core) createUniformBuffers() {
 		)
 		c.uniformBuffers[i] = uboBuf.Handle
 		c.uniformBufferMems[i] = uboBuf.DeviceMem
-		vk.MapMemory(*c.device, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
+		vk.MapMemory(c.deviceCtx.D, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
 	}
 }
 
@@ -1173,7 +1171,7 @@ func (c *Core) createDescriptorPool() {
 		PPoolSizes:    []vk.DescriptorPoolSize{uboPoolSize, texSamplerPoolSize},
 	}
 	var dp vk.DescriptorPool
-	if vk.CreateDescriptorPool(*c.device, &poolInfo, nil, &dp) != vk.Success {
+	if vk.CreateDescriptorPool(c.deviceCtx.D, &poolInfo, nil, &dp) != vk.Success {
 		log.Panicf("Failed to create descriptor pool")
 	}
 	c.descriptorPool = dp
@@ -1189,7 +1187,7 @@ func (c *Core) createDescriptorSets() {
 		PSetLayouts:        layouts,
 	}
 	sets := make([]vk.DescriptorSet, MAX_FRAMES_IN_FLIGHT)
-	if vk.AllocateDescriptorSets(*c.device, &allocInfo, &(sets[0])) != vk.Success {
+	if vk.AllocateDescriptorSets(c.deviceCtx.D, &allocInfo, &(sets[0])) != vk.Success {
 		log.Panicf("Failed to allocate descriptor set")
 	}
 	log.Printf("%v", sets)
@@ -1234,7 +1232,7 @@ func (c *Core) createDescriptorSets() {
 			PTexelBufferView: nil,
 		}
 		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, texSamplerDescriptorWrite}
-		vk.UpdateDescriptorSets(*c.device, uint32(len(writes)), writes, 0, nil)
+		vk.UpdateDescriptorSets(c.deviceCtx.D, uint32(len(writes)), writes, 0, nil)
 	}
 }
 
