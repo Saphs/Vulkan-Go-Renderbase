@@ -7,7 +7,6 @@ import (
 	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
-	vm "local/vector_math"
 	"log"
 	"math"
 	"neilpa.me/go-stbi"
@@ -21,7 +20,6 @@ const MAX_FRAMES_IN_FLIGHT = 3
 
 type Core struct {
 	// OS/Window level
-
 	win    *com.Window
 	device *com.Device
 
@@ -68,68 +66,15 @@ type Core struct {
 // Externally facing functions
 
 func NewRenderCore() *Core {
-	window := com.NewWindow("myTitep", 1280, 720, []string{
-		"VK_LAYER_KHRONOS_validation",
-	})
-	//initVulkan()
-	c := &Core{
-		win: window,
-	}
-
+	c := &Core{}
 	c.Initialize()
 	return c
 }
 
-func (c *Core) DefaultCam() {
-	cam := model.NewCamera(45, 0.1, 100)
-	cam.ProjectionType = model.CAM_PERSPECTIVE_PROJECTION
-	cam.Move(vm.Vec3{X: 0, Z: -2})
-	c.Cam = cam
-}
-
-func (c *Core) FindInScene(name string) (*model.Model, error) {
-	for i, v := range c.models {
-		if v.Name == name {
-			return c.models[i], nil
-		}
-	}
-	return nil, fmt.Errorf("model '%s' not found", name)
-}
-
-func (c *Core) AddToScene(model *model.Model) {
-	// Careful, we set references for device memory on an object outside the Core.
-	// If the object is dereferenced we will not be able to recover this memory
-	model.VertexBuffer, model.VertexBufferMem = c.allocateVBuffer(model)
-	model.IndexBuffer, model.IndexBufferMem = c.allocateIdxBuffer(model)
-	c.models = append(c.models, model)
-}
-
-func (c *Core) ClearScene() {
-	for _, m := range c.models {
-		c.RemoveFromScene(m)
-	}
-}
-
-// RemoveFromScene drops the reference to a model found in the scene.
-// Comparison is done naively by name until more sophisticated methods are required.
-func (c *Core) RemoveFromScene(model *model.Model) {
-	for i, v := range c.models {
-		if v.Name == model.Name {
-			vk.DeviceWaitIdle(c.device.D)
-			c.DestroyModelBuffers(model)
-			c.models = append(c.models[:i], c.models[i+1:]...)
-		}
-	}
-}
-
-func (c *Core) DestroyModelBuffers(model *model.Model) {
-	vk.DestroyBuffer(c.device.D, model.VertexBuffer, nil)
-	vk.FreeMemory(c.device.D, model.VertexBufferMem, nil)
-	vk.DestroyBuffer(c.device.D, model.IndexBuffer, nil)
-	vk.FreeMemory(c.device.D, model.IndexBufferMem, nil)
-}
-
 func (c *Core) Initialize() {
+	c.win = com.NewWindow(PROGRAM_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, []string{
+		"VK_LAYER_KHRONOS_validation",
+	})
 	c.device = com.NewDevice(c.win)
 	c.swapChain = com.NewSwapChain(c.device, c.win)
 	c.createRenderPass()

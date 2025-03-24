@@ -47,8 +47,7 @@ func (dc *Device) Destroy() {
 }
 
 // ToDo: Reading out the physical device properties (multiple times) is very clunky here. This could/should be
-//
-//	refactored once device selection becomes more stringent.
+// refactored once device selection becomes more stringent.
 func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 	availableDevices := ReadPhysicalDevices(*in)
 	var pd vk.PhysicalDevice
