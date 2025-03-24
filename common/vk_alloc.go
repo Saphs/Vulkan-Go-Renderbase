@@ -3,8 +3,6 @@ package common
 import (
 	vk "github.com/goki/vulkan"
 	"log"
-	"neilpa.me/go-stbi"
-	"unsafe"
 )
 
 // This Code section contains allocation helper functions. It aims to simplify the allocation of buffers and
@@ -98,48 +96,6 @@ func DestroyBuffer(dc *Device, buffer *Buffer) {
 type TextureImage struct {
 	handle    vk.Image
 	deviceMem vk.DeviceMemory
-}
-
-func CreateTextureImage(dc *Device, path string) *TextureImage {
-	img, err := stbi.Load(path)
-	if err != nil {
-		log.Panicf("Failed to load %s: %v", path, err)
-	}
-	w := img.Rect.Dx()
-	h := img.Rect.Dy()
-	bytesPerPixel := 4
-	imgSize := vk.DeviceSize(w * h * bytesPerPixel)
-	log.Printf("Loaded image %s (w: %dp, h:%d) %d Byte", path, w, h, imgSize)
-
-	stgBuf := CreateBuffer(
-		dc,
-		imgSize,
-		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
-		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
-	)
-
-	// Map staging memory - copy our vertex data into staging - unmap staging again
-	var pData unsafe.Pointer
-	err = vk.Error(vk.MapMemory(dc.D, stgBuf.DeviceMem, 0, imgSize, 0, &pData))
-	if err != nil {
-		log.Panicf("Failed to map device memory")
-	}
-	vk.Memcopy(pData, img.Pix)
-	vk.UnmapMemory(dc.D, stgBuf.DeviceMem)
-
-	imgHandle, imgMem := CreateImage(
-		dc,
-		uint32(w),
-		uint32(h),
-		vk.FormatR8g8b8a8Srgb,
-		vk.ImageTilingOptimal,
-		vk.ImageUsageFlags(vk.ImageUsageTransferDstBit|vk.ImageUsageSampledBit),
-		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
-	)
-	return &TextureImage{
-		handle:    imgHandle,
-		deviceMem: imgMem,
-	}
 }
 
 func CreateImage(dc *Device, w uint32, h uint32, format vk.Format, tiling vk.ImageTiling, usage vk.ImageUsageFlags, props vk.MemoryPropertyFlags) (vk.Image, vk.DeviceMemory) {

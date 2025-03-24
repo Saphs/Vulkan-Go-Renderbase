@@ -4,7 +4,6 @@ import "C"
 import (
 	com "GPU_fluid_simulation/common"
 	"GPU_fluid_simulation/model"
-	"fmt"
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
 	"log"
@@ -188,41 +187,6 @@ func (c *Core) destroySwapChainAndDerivatives() {
 	vk.FreeMemory(c.device.D, c.depthImageMem, nil)
 
 	c.swapChain.Destroy(c.device)
-}
-
-// Bootstrapping / Initialization code
-
-func initSDLWindow() *sdl.Window {
-	// SDL - version print & init
-	sdlVersion := fmt.Sprintf("v%d.%d.%d", sdl.MAJOR_VERSION, sdl.MINOR_VERSION, sdl.PATCHLEVEL)
-	log.Printf("Using SDL: [%s]", sdlVersion)
-	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
-		panic("Failed to initialize a SDL !")
-	}
-	log.Println("Creating SDL window")
-	win, err := sdl.CreateWindow(
-		PROGRAM_NAME,
-		sdl.WINDOWPOS_UNDEFINED,
-		sdl.WINDOWPOS_UNDEFINED,
-		WINDOW_WIDTH,
-		WINDOW_HEIGHT,
-		sdl.WINDOW_SHOWN|sdl.WINDOW_RESIZABLE|sdl.WINDOW_VULKAN,
-	)
-	if err != nil {
-		panic(err)
-	}
-	return win
-}
-
-func initVulkan() {
-	// Vulkan - spec as per: https://github.com/goki/vulkan
-	log.Printf("Vulkan SDK: [%s]", "v1.3.239")
-	log.Println("Initializing Vulkan for SDL window")
-	vk.SetGetInstanceProcAddr(sdl.VulkanGetVkGetInstanceProcAddr())
-	err := vk.Init()
-	if err != nil {
-		panic(err)
-	}
 }
 
 func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
@@ -518,16 +482,8 @@ func (c *Core) createCommandPool() {
 }
 
 func (c *Core) createCommandBuffers() {
-	var buffers = make([]vk.CommandBuffer, MAX_FRAMES_IN_FLIGHT)
-	cbAllocateInfo := vk.CommandBufferAllocateInfo{
-		SType:              vk.StructureTypeCommandBufferAllocateInfo,
-		PNext:              nil,
-		CommandPool:        c.commandPool,
-		Level:              vk.CommandBufferLevelPrimary,
-		CommandBufferCount: uint32(len(buffers)),
-	}
-
-	if vk.AllocateCommandBuffers(c.device.D, &cbAllocateInfo, buffers) != vk.Success {
+	buffers, err := com.VKAllocateCommandBuffersPrimary(c.device.D, c.commandPool, uint32(MAX_FRAMES_IN_FLIGHT))
+	if err != nil {
 		log.Panicf("Failed to allocate command buffers")
 	}
 	log.Printf("Successfully allocated %d command buffers", len(buffers))
@@ -744,15 +700,10 @@ func (c *Core) copyBufferToImage(buffer vk.Buffer, img vk.Image, w uint32, h uin
 }
 
 func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
-	allocInfo := vk.CommandBufferAllocateInfo{
-		SType:              vk.StructureTypeCommandBufferAllocateInfo,
-		PNext:              nil,
-		CommandPool:        c.commandPool,
-		Level:              vk.CommandBufferLevelPrimary,
-		CommandBufferCount: 1,
+	cmdBuffers, err := com.VKAllocateCommandBuffersPrimary(c.device.D, c.commandPool, 1)
+	if err != nil {
+		log.Panicf("Failed to create command buffer for single time use: %v", err)
 	}
-	cmdBuffers := make([]vk.CommandBuffer, 1)
-	vk.AllocateCommandBuffers(c.device.D, &allocInfo, cmdBuffers)
 
 	beginInfo := vk.CommandBufferBeginInfo{
 		SType:            vk.StructureTypeCommandBufferBeginInfo,
