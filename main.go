@@ -144,9 +144,11 @@ func removePressedKey(key sdl.Keycode) {
 func main() {
 	myModel := model.NewCubeModel("Cube 1")
 	myModel2 := model.NewCubeModel("Cube 2")
+	grid := model.NewGridPlane("Grid")
 
 	core := renderer.NewRenderCore()
 	core.DefaultCam()
+	core.AddToScene(grid)
 	core.AddToScene(myModel)
 	core.AddToScene(myModel2)
 	core.Loop(

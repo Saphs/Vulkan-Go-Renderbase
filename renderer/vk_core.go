@@ -49,8 +49,11 @@ type Core struct {
 	uniformBuffersMapped []unsafe.Pointer
 
 	// 3D World
-	Cam    *model.Camera
-	models []*model.Model
+	Cam                     *model.Camera
+	models                  []*model.Model
+	ctxUniformBuffer        vk.Buffer
+	ctxUniformBufferMem     vk.DeviceMemory
+	ctxUniformBuffersMapped *unsafe.Pointer
 
 	textureImage     vk.Image
 	textureImageMem  vk.DeviceMemory
@@ -86,6 +89,7 @@ func (c *Core) Initialize() {
 	c.createTextureViews()
 	c.createTextureSampler()
 	c.createUniformBuffers()
+	c.createCtxUniformBuffers()
 	c.createDescriptorPool()
 	c.createDescriptorSets()
 	c.createCommandBuffers()
@@ -160,6 +164,10 @@ func (c *Core) Destroy() {
 		vk.DestroyBuffer(c.device.D, c.uniformBuffers[i], nil)
 		vk.FreeMemory(c.device.D, c.uniformBufferMems[i], nil)
 	}
+	// context ubo
+	vk.DestroyBuffer(c.device.D, c.ctxUniformBuffer, nil)
+	vk.FreeMemory(c.device.D, c.ctxUniformBufferMem, nil)
+
 	vk.DestroyDescriptorPool(c.device.D, c.descriptorPool, nil)
 	vk.DestroyDescriptorSetLayout(c.device.D, c.descriptorSetLayout, nil)
 
@@ -557,16 +565,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
 	)
-
-	// Map staging memory - copy our vertex data into staging - unmap staging again
-	var pData unsafe.Pointer
-	err := vk.Error(vk.MapMemory(c.device.D, stgBuf.DeviceMem, 0, bufSize, 0, &pData))
-	if err != nil {
-		log.Panicf("Failed to map device memory")
-	}
-	vk.Memcopy(pData, com.RawBytes(m.Mesh.VIndices))
-	vk.UnmapMemory(c.device.D, stgBuf.DeviceMem)
-
+	com.CopyToDeviceBuffer(c.device, stgBuf, m.GetIdxBufferBytes())
 	// Create vertex buffer
 	idxBuf := com.CreateBuffer(
 		c.device,
@@ -578,8 +577,7 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 		"Created index buffer (\"%s\": [handleRef@%p, bufferRef@%p, Size: %d Byte])",
 		m.Name, &idxBuf.Handle, &idxBuf.DeviceMem, bufSize,
 	)
-
-	// Move memory to vertex buffer & delete staging buffer afterwards
+	// Move memory to index buffer & delete staging buffer afterwards
 	c.copyBuffer(stgBuf, idxBuf, bufSize)
 	vk.DestroyBuffer(c.device.D, stgBuf.Handle, nil)
 	vk.FreeMemory(c.device.D, stgBuf.DeviceMem, nil)
@@ -1006,8 +1004,15 @@ func (c *Core) createDescriptorSetLayout() {
 		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
 		PImmutableSamplers: nil,
 	}
+	ctxUboLayoutBinding := vk.DescriptorSetLayoutBinding{
+		Binding:            1,                              // <- binding index in vert shader
+		DescriptorType:     vk.DescriptorTypeUniformBuffer, // <- type of binding in vert shader
+		DescriptorCount:    1,
+		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
+		PImmutableSamplers: nil,
+	}
 	textureSamplerLayoutBinding := vk.DescriptorSetLayoutBinding{
-		Binding:            1,                                     // <- binding index in frag shader
+		Binding:            2,                                     // <- binding index in frag shader
 		DescriptorType:     vk.DescriptorTypeCombinedImageSampler, // <- type of binding in frag shader
 		DescriptorCount:    1,
 		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
@@ -1017,8 +1022,8 @@ func (c *Core) createDescriptorSetLayout() {
 		SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
 		PNext:        nil,
 		Flags:        0,
-		BindingCount: 2,
-		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, textureSamplerLayoutBinding},
+		BindingCount: 3,
+		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, ctxUboLayoutBinding, textureSamplerLayoutBinding},
 	}
 	var dsl vk.DescriptorSetLayout
 	if vk.CreateDescriptorSetLayout(c.device.D, &layoutInfo, nil, &dsl) != vk.Success {
@@ -1047,6 +1052,30 @@ func (c *Core) createUniformBuffers() {
 		c.uniformBufferMems[i] = uboBuf.DeviceMem
 		vk.MapMemory(c.device.D, c.uniformBufferMems[i], 0, uboBufSize, 0, &c.uniformBuffersMapped[i])
 	}
+}
+
+func (c *Core) createCtxUniformBuffers() {
+	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
+	uboSize := model.SizeOfCtxUbo()
+
+	for i := 0; i < 1; i++ {
+		uboBuf := com.CreateBuffer(
+			c.device,
+			uboSize,
+			vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit),
+			memProps,
+		)
+		c.ctxUniformBuffer = uboBuf.Handle
+		c.ctxUniformBufferMem = uboBuf.DeviceMem
+		c.ctxUniformBuffersMapped = new(unsafe.Pointer)
+		vk.MapMemory(c.device.D, c.ctxUniformBufferMem, 0, uboSize, 0, c.ctxUniformBuffersMapped)
+	}
+
+	// Copy over
+	cubo := model.ContextUniformBufferObject{
+		ModelType: 1,
+	}
+	vk.Memcopy(*c.ctxUniformBuffersMapped, cubo.Bytes())
 }
 
 func (c *Core) createDescriptorPool() {
@@ -1109,6 +1138,25 @@ func (c *Core) createDescriptorSets() {
 			PTexelBufferView: nil,
 		}
 
+		// ctxubo
+		ctxBufferInfo := vk.DescriptorBufferInfo{
+			Buffer: c.ctxUniformBuffer,
+			Offset: 0,
+			Range:  model.SizeOfCtxUbo(),
+		}
+		ctxUboDescriptorWrite := vk.WriteDescriptorSet{
+			SType:            vk.StructureTypeWriteDescriptorSet,
+			PNext:            nil,
+			DstSet:           c.descriptorSets[i],
+			DstBinding:       1,
+			DstArrayElement:  0,
+			DescriptorCount:  1,
+			DescriptorType:   vk.DescriptorTypeUniformBuffer,
+			PImageInfo:       nil,
+			PBufferInfo:      []vk.DescriptorBufferInfo{ctxBufferInfo},
+			PTexelBufferView: nil,
+		}
+
 		// textureSampler
 		texSampler := vk.DescriptorImageInfo{
 			Sampler:     c.textureSampler,
@@ -1119,7 +1167,7 @@ func (c *Core) createDescriptorSets() {
 			SType:            vk.StructureTypeWriteDescriptorSet,
 			PNext:            nil,
 			DstSet:           c.descriptorSets[i],
-			DstBinding:       1,
+			DstBinding:       2,
 			DstArrayElement:  0,
 			DescriptorCount:  1,
 			DescriptorType:   vk.DescriptorTypeCombinedImageSampler,
@@ -1127,7 +1175,7 @@ func (c *Core) createDescriptorSets() {
 			PBufferInfo:      nil,
 			PTexelBufferView: nil,
 		}
-		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, texSamplerDescriptorWrite}
+		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, ctxUboDescriptorWrite, texSamplerDescriptorWrite}
 		vk.UpdateDescriptorSets(c.device.D, uint32(len(writes)), writes, 0, nil)
 	}
 }

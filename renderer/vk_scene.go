@@ -27,12 +27,13 @@ func (c *Core) FindInScene(name string) (*model.Model, error) {
 	return nil, fmt.Errorf("model '%s' not found", name)
 }
 
-func (c *Core) AddToScene(model *model.Model) {
+func (c *Core) AddToScene(m *model.Model) {
+
 	// Careful, we set references for device memory on an object outside the Core.
 	// If the object is dereferenced we will not be able to recover this memory
-	model.VertexBuffer, model.VertexBufferMem = c.allocateVBuffer(model)
-	model.IndexBuffer, model.IndexBufferMem = c.allocateIdxBuffer(model)
-	c.models = append(c.models, model)
+	m.VertexBuffer, m.VertexBufferMem = c.allocateVBuffer(m)
+	m.IndexBuffer, m.IndexBufferMem = c.allocateIdxBuffer(m)
+	c.models = append(c.models, m)
 }
 
 func (c *Core) ClearScene() {
