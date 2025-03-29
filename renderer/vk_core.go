@@ -198,34 +198,9 @@ func (c *Core) destroySwapChainAndDerivatives() {
 }
 
 func (c *Core) createImageView(image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
-	return CreateImageViewDC(c.device, image, format, aspectFlags)
-}
-
-func CreateImageViewDC(dc *com.Device, image vk.Image, format vk.Format, aspectFlags vk.ImageAspectFlags) vk.ImageView {
-	createInfo := &vk.ImageViewCreateInfo{
-		SType:    vk.StructureTypeImageViewCreateInfo,
-		PNext:    nil,
-		Flags:    0,
-		Image:    image,
-		ViewType: vk.ImageViewType2d,
-		Format:   format,
-		Components: vk.ComponentMapping{
-			R: vk.ComponentSwizzleIdentity,
-			G: vk.ComponentSwizzleIdentity,
-			B: vk.ComponentSwizzleIdentity,
-			A: vk.ComponentSwizzleIdentity,
-		},
-		SubresourceRange: vk.ImageSubresourceRange{
-			AspectMask:     aspectFlags,
-			BaseMipLevel:   0,
-			LevelCount:     1,
-			BaseArrayLayer: 0,
-			LayerCount:     1,
-		},
-	}
-	imgView, err := com.VkCreateImageView(dc.D, createInfo, nil)
+	imgView, err := com.VKCreate2DFullSizeImageView(c.device.D, image, format, aspectFlags)
 	if err != nil {
-		log.Panicf("Failed create image view due to: %s", err)
+		log.Panicf("Failed to create image view: %v", err)
 	}
 	return imgView
 }
@@ -475,13 +450,11 @@ func (c *Core) createFrameBuffers() {
 }
 
 func (c *Core) createCommandPool() {
-	poolInfo := vk.CommandPoolCreateInfo{
-		SType:            vk.StructureTypeCommandPoolCreateInfo,
-		PNext:            nil,
-		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
-		QueueFamilyIndex: *c.device.QFamilies.GraphicsFamily,
-	}
-	commandPool, err := com.VkCreateCommandPool(c.device.D, &poolInfo, nil)
+	commandPool, err := com.VKSCreateCommandPool(
+		c.device.D,
+		vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
+		*c.device.QFamilies.GraphicsFamily,
+	)
 	if err != nil {
 		log.Panicf("Failed to create command pool")
 	}
@@ -698,38 +671,18 @@ func (c *Core) copyBufferToImage(buffer vk.Buffer, img vk.Image, w uint32, h uin
 }
 
 func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
-	cmdBuffers, err := com.VKAllocateCommandBuffersPrimary(c.device.D, c.commandPool, 1)
+	cmdBuffer, err := com.VKBeginSingleTimeCommands(c.device.D, c.commandPool)
 	if err != nil {
 		log.Panicf("Failed to create command buffer for single time use: %v", err)
 	}
-
-	beginInfo := vk.CommandBufferBeginInfo{
-		SType:            vk.StructureTypeCommandBufferBeginInfo,
-		PNext:            nil,
-		Flags:            vk.CommandBufferUsageFlags(vk.CommandBufferUsageOneTimeSubmitBit),
-		PInheritanceInfo: nil,
-	}
-	vk.BeginCommandBuffer(cmdBuffers[0], &beginInfo)
-	return cmdBuffers[0]
+	return cmdBuffer
 }
 
 func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
-	vk.EndCommandBuffer(cmdBuf)
-
-	submitInfo := vk.SubmitInfo{
-		SType:                vk.StructureTypeSubmitInfo,
-		PNext:                nil,
-		WaitSemaphoreCount:   0,
-		PWaitSemaphores:      nil,
-		PWaitDstStageMask:    nil,
-		CommandBufferCount:   1,
-		PCommandBuffers:      []vk.CommandBuffer{cmdBuf},
-		SignalSemaphoreCount: 0,
-		PSignalSemaphores:    nil,
+	err := com.VKEndSingleTimeCommands(c.device.D, c.commandPool, c.device.GraphicsQ, cmdBuf)
+	if err != nil {
+		log.Panicf("Failed to end single time use command buffer: %v", err)
 	}
-	vk.QueueSubmit(c.device.GraphicsQ, 1, []vk.SubmitInfo{submitInfo}, nil)
-	vk.QueueWaitIdle(c.device.GraphicsQ)
-	vk.FreeCommandBuffers(c.device.D, c.commandPool, 1, []vk.CommandBuffer{cmdBuf})
 }
 
 func (c *Core) createTexture() {
