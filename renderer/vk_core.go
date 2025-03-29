@@ -152,7 +152,7 @@ func (c *Core) Destroy() {
 	// If user has not cleaned up all models manually, warn and remove them now
 	if len(c.models) > 0 {
 		log.Printf("Leftover models in render core!: %v", len(c.models))
-		c.ClearScene()
+		c.ClearSceneForced()
 	}
 
 	// We need to wait for the last asynchronous call to finish before tear down

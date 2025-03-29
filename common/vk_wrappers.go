@@ -175,3 +175,11 @@ func VKCreateDescriptorSetLayout(device vk.Device, pCreateInfo *vk.DescriptorSet
 	}
 	return dsl, nil
 }
+
+func VKDeviceWaitIdle(device vk.Device) error {
+	err := vk.Error(vk.DeviceWaitIdle(device))
+	if err != nil {
+		return err
+	}
+	return nil
+}

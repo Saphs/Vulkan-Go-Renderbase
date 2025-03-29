@@ -80,12 +80,12 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 
 	m := vm.NewUnitMat(4)
 	mod2, err := c.FindInScene("Cube 2")
-	mod1, err := c.FindInScene("Cube 1")
+	//mod1, err := c.FindInScene("Cube 1")
 	if err != nil {
 		log.Println(err)
 	} else {
 		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(45), vm.Vec3{X: 1, Y: 1})
-		mod1.Mesh.ModelMat = m
+		//mod1.Mesh.ModelMat = m
 		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(20), vm.Vec3{X: 0.5, Y: 1})
 		mod2.Mesh.ModelMat = m
 	}
