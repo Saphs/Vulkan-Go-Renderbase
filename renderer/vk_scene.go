@@ -5,6 +5,7 @@ import (
 	"fmt"
 	vk "github.com/goki/vulkan"
 	vm "local/vector_math"
+	"log"
 )
 
 // These functions are part of the rendering core but are split into their own file for logical separation. Their
@@ -50,6 +51,7 @@ func (c *Core) RemoveFromScene(model *model.Model) {
 			vk.DeviceWaitIdle(c.device.D)
 			c.DestroyModelBuffers(model)
 			c.models = append(c.models[:i], c.models[i+1:]...)
+			log.Printf("Removed model '%s'", model.Name)
 		}
 	}
 }

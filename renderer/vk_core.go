@@ -34,7 +34,9 @@ type Core struct {
 	pipelines           []vk.Pipeline
 	commandPool         vk.CommandPool
 
-	// DepthBuffer
+	modelDescriptorSetLayout vk.DescriptorSetLayout
+	modelDescriptorPool      vk.DescriptorPool
+	modelDescriptorSets      []vk.DescriptorSet
 
 	// Frame level
 	commandBuffers     []vk.CommandBuffer
@@ -81,6 +83,7 @@ func (c *Core) Initialize() {
 	c.swapChain = com.NewSwapChain(c.device, c.win)
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
+	c.createModelDescriptorSetLayout()
 	c.createGraphicsPipeline()
 	c.createCommandPool()
 	c.createDepthResources()
@@ -91,7 +94,9 @@ func (c *Core) Initialize() {
 	c.createUniformBuffers()
 	c.createCtxUniformBuffers()
 	c.createDescriptorPool()
+	c.createModelDescriptorPool()
 	c.createDescriptorSets()
+	c.createModelDescriptorSets()
 	c.createCommandBuffers()
 	c.createSyncObjects()
 }
@@ -170,6 +175,9 @@ func (c *Core) Destroy() {
 
 	vk.DestroyDescriptorPool(c.device.D, c.descriptorPool, nil)
 	vk.DestroyDescriptorSetLayout(c.device.D, c.descriptorSetLayout, nil)
+
+	vk.DestroyDescriptorPool(c.device.D, c.modelDescriptorPool, nil)
+	vk.DestroyDescriptorSetLayout(c.device.D, c.modelDescriptorSetLayout, nil)
 
 	// Destroy all infrastructure up to the sdl window
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
@@ -387,8 +395,8 @@ func (c *Core) createGraphicsPipeline() {
 		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
 		PNext:                  nil,
 		Flags:                  0,
-		SetLayoutCount:         1,
-		PSetLayouts:            []vk.DescriptorSetLayout{c.descriptorSetLayout},
+		SetLayoutCount:         2,
+		PSetLayouts:            []vk.DescriptorSetLayout{c.descriptorSetLayout, c.modelDescriptorSetLayout},
 		PushConstantRangeCount: 1,
 		PPushConstantRanges:    []vk.PushConstantRange{modelPushConstantRange},
 	}
@@ -864,7 +872,7 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
 
 	for i := range c.models {
-		vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 1, []vk.DescriptorSet{c.descriptorSets[imageIdx]}, 0, nil)
+		vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 2, []vk.DescriptorSet{c.descriptorSets[imageIdx], c.modelDescriptorSets[i]}, 0, nil)
 		vertBuffers := []vk.Buffer{c.models[i].VertexBuffer}
 		offsets := []vk.DeviceSize{0}
 		vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
@@ -957,15 +965,8 @@ func (c *Core) createDescriptorSetLayout() {
 		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
 		PImmutableSamplers: nil,
 	}
-	ctxUboLayoutBinding := vk.DescriptorSetLayoutBinding{
-		Binding:            1,                              // <- binding index in vert shader
-		DescriptorType:     vk.DescriptorTypeUniformBuffer, // <- type of binding in vert shader
-		DescriptorCount:    1,
-		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
-		PImmutableSamplers: nil,
-	}
 	textureSamplerLayoutBinding := vk.DescriptorSetLayoutBinding{
-		Binding:            2,                                     // <- binding index in frag shader
+		Binding:            1,                                     // <- binding index in frag shader
 		DescriptorType:     vk.DescriptorTypeCombinedImageSampler, // <- type of binding in frag shader
 		DescriptorCount:    1,
 		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
@@ -975,14 +976,36 @@ func (c *Core) createDescriptorSetLayout() {
 		SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
 		PNext:        nil,
 		Flags:        0,
-		BindingCount: 3,
-		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, ctxUboLayoutBinding, textureSamplerLayoutBinding},
+		BindingCount: 2,
+		PBindings:    []vk.DescriptorSetLayoutBinding{uboLayoutBinding, textureSamplerLayoutBinding},
 	}
-	var dsl vk.DescriptorSetLayout
-	if vk.CreateDescriptorSetLayout(c.device.D, &layoutInfo, nil, &dsl) != vk.Success {
+	dsl, err := com.VKCreateDescriptorSetLayout(c.device.D, &layoutInfo, nil)
+	if err != nil {
 		log.Panicf("Failed to create descriptor set layout")
 	}
 	c.descriptorSetLayout = dsl
+}
+
+func (c *Core) createModelDescriptorSetLayout() {
+	ctxUboLayoutBinding := vk.DescriptorSetLayoutBinding{
+		Binding:            0,                              // <- binding index in vert shader
+		DescriptorType:     vk.DescriptorTypeUniformBuffer, // <- type of binding in vert shader
+		DescriptorCount:    1,
+		StageFlags:         vk.ShaderStageFlags(vk.ShaderStageVertexBit),
+		PImmutableSamplers: nil,
+	}
+	layoutInfo := vk.DescriptorSetLayoutCreateInfo{
+		SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
+		PNext:        nil,
+		Flags:        0,
+		BindingCount: 1,
+		PBindings:    []vk.DescriptorSetLayoutBinding{ctxUboLayoutBinding},
+	}
+	dsl, err := com.VKCreateDescriptorSetLayout(c.device.D, &layoutInfo, nil)
+	if err != nil {
+		log.Panicf("Failed to create descriptor set layout")
+	}
+	c.modelDescriptorSetLayout = dsl
 }
 
 func (c *Core) createUniformBuffers() {
@@ -1055,6 +1078,28 @@ func (c *Core) createDescriptorPool() {
 	c.descriptorPool = dp
 }
 
+func (c *Core) createModelDescriptorPool() {
+	// this should be dynamic somehow
+	modelCount := uint32(3)
+	uboPoolSize := vk.DescriptorPoolSize{
+		Type:            vk.DescriptorTypeUniformBuffer,
+		DescriptorCount: modelCount,
+	}
+	poolInfo := vk.DescriptorPoolCreateInfo{
+		SType:         vk.StructureTypeDescriptorPoolCreateInfo,
+		PNext:         nil,
+		Flags:         0,
+		MaxSets:       modelCount,
+		PoolSizeCount: 1,
+		PPoolSizes:    []vk.DescriptorPoolSize{uboPoolSize},
+	}
+	var dp vk.DescriptorPool
+	if vk.CreateDescriptorPool(c.device.D, &poolInfo, nil, &dp) != vk.Success {
+		log.Panicf("Failed to create descriptor pool")
+	}
+	c.modelDescriptorPool = dp
+}
+
 func (c *Core) createDescriptorSets() {
 	layouts := []vk.DescriptorSetLayout{c.descriptorSetLayout, c.descriptorSetLayout, c.descriptorSetLayout}
 	allocInfo := vk.DescriptorSetAllocateInfo{
@@ -1091,25 +1136,6 @@ func (c *Core) createDescriptorSets() {
 			PTexelBufferView: nil,
 		}
 
-		// ctxubo
-		ctxBufferInfo := vk.DescriptorBufferInfo{
-			Buffer: c.ctxUniformBuffer,
-			Offset: 0,
-			Range:  model.SizeOfCtxUbo(),
-		}
-		ctxUboDescriptorWrite := vk.WriteDescriptorSet{
-			SType:            vk.StructureTypeWriteDescriptorSet,
-			PNext:            nil,
-			DstSet:           c.descriptorSets[i],
-			DstBinding:       1,
-			DstArrayElement:  0,
-			DescriptorCount:  1,
-			DescriptorType:   vk.DescriptorTypeUniformBuffer,
-			PImageInfo:       nil,
-			PBufferInfo:      []vk.DescriptorBufferInfo{ctxBufferInfo},
-			PTexelBufferView: nil,
-		}
-
 		// textureSampler
 		texSampler := vk.DescriptorImageInfo{
 			Sampler:     c.textureSampler,
@@ -1120,7 +1146,7 @@ func (c *Core) createDescriptorSets() {
 			SType:            vk.StructureTypeWriteDescriptorSet,
 			PNext:            nil,
 			DstSet:           c.descriptorSets[i],
-			DstBinding:       2,
+			DstBinding:       1,
 			DstArrayElement:  0,
 			DescriptorCount:  1,
 			DescriptorType:   vk.DescriptorTypeCombinedImageSampler,
@@ -1128,7 +1154,50 @@ func (c *Core) createDescriptorSets() {
 			PBufferInfo:      nil,
 			PTexelBufferView: nil,
 		}
-		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, ctxUboDescriptorWrite, texSamplerDescriptorWrite}
+		writes := []vk.WriteDescriptorSet{uboDescriptorWrite, texSamplerDescriptorWrite}
+		vk.UpdateDescriptorSets(c.device.D, uint32(len(writes)), writes, 0, nil)
+	}
+}
+
+func (c *Core) createModelDescriptorSets() {
+	// this holds descriptor sets for 3 models, this needs to be dynamic somehow
+	modelCount := uint32(3)
+	layouts := []vk.DescriptorSetLayout{c.modelDescriptorSetLayout, c.modelDescriptorSetLayout, c.modelDescriptorSetLayout}
+	allocInfo := vk.DescriptorSetAllocateInfo{
+		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
+		PNext:              nil,
+		DescriptorPool:     c.modelDescriptorPool,
+		DescriptorSetCount: modelCount,
+		PSetLayouts:        layouts,
+	}
+	sets := make([]vk.DescriptorSet, modelCount)
+	err := vk.Error(vk.AllocateDescriptorSets(c.device.D, &allocInfo, &(sets[0])))
+	if err != nil {
+		log.Panicf("Failed to allocate descriptor set: %v", err)
+	}
+	log.Printf("%v", sets)
+	c.modelDescriptorSets = sets
+
+	for i := 0; i < int(modelCount); i++ {
+		// ctxubo
+		ctxBufferInfo := vk.DescriptorBufferInfo{
+			Buffer: c.ctxUniformBuffer,
+			Offset: 0,
+			Range:  model.SizeOfCtxUbo(),
+		}
+		ctxUboDescriptorWrite := vk.WriteDescriptorSet{
+			SType:            vk.StructureTypeWriteDescriptorSet,
+			PNext:            nil,
+			DstSet:           c.modelDescriptorSets[i],
+			DstBinding:       0,
+			DstArrayElement:  0,
+			DescriptorCount:  1,
+			DescriptorType:   vk.DescriptorTypeUniformBuffer,
+			PImageInfo:       nil,
+			PBufferInfo:      []vk.DescriptorBufferInfo{ctxBufferInfo},
+			PTexelBufferView: nil,
+		}
+		writes := []vk.WriteDescriptorSet{ctxUboDescriptorWrite}
 		vk.UpdateDescriptorSets(c.device.D, uint32(len(writes)), writes, 0, nil)
 	}
 }

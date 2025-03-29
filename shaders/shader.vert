@@ -1,14 +1,15 @@
 #version 450
 
 //ubos
-layout(binding = 0) uniform UniformBufferObject {
+layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
 } ubo;
 
-layout(binding = 1) uniform CtxUniformBufferObject {
+layout(set = 1, binding = 0) uniform ModelUniformBufferObject {
     int modelType;
-} ctxubo;
+} ctx;
+
 
 //push constants
 layout( push_constant ) uniform constants {
@@ -25,5 +26,5 @@ layout(location = 1) out vec2 fragTexColor;
 void main() {
     gl_Position = vec4(inPosition, 1.0) * pc.model * ubo.view * ubo.proj;
     fragColor = inColor;
-    fragTexColor = inTexColor * 0.5 * ctxubo.modelType;
+    fragTexColor = inTexColor * 0.5 * ctx.modelType;
 }

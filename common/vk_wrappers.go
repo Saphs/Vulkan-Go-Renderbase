@@ -166,3 +166,12 @@ func VKCreateShaderModule(device vk.Device, pCreateInfo *vk.ShaderModuleCreateIn
 	}
 	return sm, nil
 }
+
+func VKCreateDescriptorSetLayout(device vk.Device, pCreateInfo *vk.DescriptorSetLayoutCreateInfo, pAllocator *vk.AllocationCallbacks) (vk.DescriptorSetLayout, error) {
+	var dsl vk.DescriptorSetLayout
+	err := vk.Error(vk.CreateDescriptorSetLayout(device, pCreateInfo, pAllocator, &dsl))
+	if err != nil {
+		return nil, err
+	}
+	return dsl, nil
+}
