@@ -302,8 +302,11 @@ func (c *Core) createRenderPass() {
 }
 
 func (c *Core) createGraphicsPipeline() {
+	// Shader mode deletion can be done right after pipeline creation
 	vertShaderMod, vertStageInfo := LoadVert(c.device.D, "shaders_spv/vert.spv")
+	defer DeleteShaderMod(c.device.D, vertShaderMod)
 	fragShaderMod, fragStageInfo := LoadFrag(c.device.D, "shaders_spv/frag.spv")
+	defer DeleteShaderMod(c.device.D, fragShaderMod)
 	shaderStages := []vk.PipelineShaderStageCreateInfo{vertStageInfo, fragStageInfo}
 	log.Printf("Prepared %d shader stages for pipeline creation: %v", len(shaderStages), shaderStages)
 
@@ -465,9 +468,6 @@ func (c *Core) createGraphicsPipeline() {
 	c.pipelines = pipelines
 	log.Printf("Successfully created graphics pipeline")
 
-	// Explicitly done right after pipeline creation
-	DeleteShaderMod(c.device.D, vertShaderMod)
-	DeleteShaderMod(c.device.D, fragShaderMod)
 }
 
 func (c *Core) createFrameBuffers() {
@@ -733,7 +733,7 @@ func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
 }
 
 func (c *Core) createTexture() {
-	path := "textures/facebook.jpg"
+	path := "textures/statue-1275469_1280.jpg"
 	img, err := stbi.Load(path)
 	if err != nil {
 		log.Panicf("Failed to load %s: %v", path, err)
@@ -909,9 +909,9 @@ func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
 		},
 	}
 	vk.CmdSetScissor(buffer, 0, 1, scissor)
-	vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 1, []vk.DescriptorSet{c.descriptorSets[imageIdx]}, 0, nil)
 
 	for i := range c.models {
+		vk.CmdBindDescriptorSets(buffer, vk.PipelineBindPointGraphics, c.pipelineLayout, 0, 1, []vk.DescriptorSet{c.descriptorSets[imageIdx]}, 0, nil)
 		vertBuffers := []vk.Buffer{c.models[i].VertexBuffer}
 		offsets := []vk.DeviceSize{0}
 		vk.CmdBindVertexBuffers(buffer, 0, uint32(len(vertBuffers)), vertBuffers, offsets)
@@ -1073,7 +1073,7 @@ func (c *Core) createCtxUniformBuffers() {
 
 	// Copy over
 	cubo := model.ContextUniformBufferObject{
-		ModelType: 1,
+		ModelType: 2,
 	}
 	vk.Memcopy(*c.ctxUniformBuffersMapped, cubo.Bytes())
 }
