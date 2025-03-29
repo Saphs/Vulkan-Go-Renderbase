@@ -26,5 +26,10 @@ layout(location = 1) out vec2 fragTexColor;
 void main() {
     gl_Position = vec4(inPosition, 1.0) * pc.model * ubo.view * ubo.proj;
     fragColor = inColor;
-    fragTexColor = inTexColor * 0.5 * ctx.modelType;
+    vec2 tex = inTexColor;
+    if (ctx.modelType == 1) {
+        tex = vec2(0.0, 0.0);
+    }
+
+    fragTexColor = tex;
 }

@@ -53,9 +53,9 @@ type Core struct {
 	// 3D World
 	Cam                     *model.Camera
 	models                  []*model.Model
-	ctxUniformBuffer        vk.Buffer
-	ctxUniformBufferMem     vk.DeviceMemory
-	ctxUniformBuffersMapped *unsafe.Pointer
+	ctxUniformBuffer        []vk.Buffer
+	ctxUniformBufferMem     []vk.DeviceMemory
+	ctxUniformBuffersMapped []unsafe.Pointer
 
 	textureImage     vk.Image
 	textureImageMem  vk.DeviceMemory
@@ -170,8 +170,11 @@ func (c *Core) Destroy() {
 		vk.FreeMemory(c.device.D, c.uniformBufferMems[i], nil)
 	}
 	// context ubo
-	vk.DestroyBuffer(c.device.D, c.ctxUniformBuffer, nil)
-	vk.FreeMemory(c.device.D, c.ctxUniformBufferMem, nil)
+	modelCount := 3
+	for i := 0; i < modelCount; i++ {
+		vk.DestroyBuffer(c.device.D, c.ctxUniformBuffer[i], nil)
+		vk.FreeMemory(c.device.D, c.ctxUniformBufferMem[i], nil)
+	}
 
 	vk.DestroyDescriptorPool(c.device.D, c.descriptorPool, nil)
 	vk.DestroyDescriptorSetLayout(c.device.D, c.descriptorSetLayout, nil)
@@ -750,9 +753,9 @@ func (c *Core) createTextureSampler() {
 		MagFilter:               vk.FilterLinear,
 		MinFilter:               vk.FilterLinear,
 		MipmapMode:              vk.SamplerMipmapModeLinear,
-		AddressModeU:            vk.SamplerAddressModeRepeat,
-		AddressModeV:            vk.SamplerAddressModeRepeat,
-		AddressModeW:            vk.SamplerAddressModeRepeat,
+		AddressModeU:            vk.SamplerAddressModeClampToBorder,
+		AddressModeV:            vk.SamplerAddressModeClampToBorder,
+		AddressModeW:            vk.SamplerAddressModeClampToBorder,
 		MipLodBias:              0.0,
 		AnisotropyEnable:        vk.True,
 		MaxAnisotropy:           c.device.PdProps.Limits.MaxSamplerAnisotropy,
@@ -1031,27 +1034,33 @@ func (c *Core) createUniformBuffers() {
 }
 
 func (c *Core) createCtxUniformBuffers() {
+
+	modelCount := 3
+	c.ctxUniformBuffer = make([]vk.Buffer, modelCount)
+	c.ctxUniformBufferMem = make([]vk.DeviceMemory, modelCount)
+	c.ctxUniformBuffersMapped = make([]unsafe.Pointer, modelCount)
+
 	memProps := vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit | vk.MemoryPropertyHostCoherentBit)
 	uboSize := model.SizeOfCtxUbo()
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < modelCount; i++ {
 		uboBuf := com.CreateBuffer(
 			c.device,
 			uboSize,
 			vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit),
 			memProps,
 		)
-		c.ctxUniformBuffer = uboBuf.Handle
-		c.ctxUniformBufferMem = uboBuf.DeviceMem
-		c.ctxUniformBuffersMapped = new(unsafe.Pointer)
-		vk.MapMemory(c.device.D, c.ctxUniformBufferMem, 0, uboSize, 0, c.ctxUniformBuffersMapped)
+		c.ctxUniformBuffer[i] = uboBuf.Handle
+		c.ctxUniformBufferMem[i] = uboBuf.DeviceMem
+		vk.MapMemory(c.device.D, c.ctxUniformBufferMem[i], 0, uboSize, 0, &c.ctxUniformBuffersMapped[i])
+
+		// Copy over
+		cubo := model.ContextUniformBufferObject{
+			ModelType: uint32(i),
+		}
+		vk.Memcopy(c.ctxUniformBuffersMapped[i], cubo.Bytes())
 	}
 
-	// Copy over
-	cubo := model.ContextUniformBufferObject{
-		ModelType: 2,
-	}
-	vk.Memcopy(*c.ctxUniformBuffersMapped, cubo.Bytes())
 }
 
 func (c *Core) createDescriptorPool() {
@@ -1083,7 +1092,7 @@ func (c *Core) createModelDescriptorPool() {
 	modelCount := uint32(3)
 	uboPoolSize := vk.DescriptorPoolSize{
 		Type:            vk.DescriptorTypeUniformBuffer,
-		DescriptorCount: modelCount,
+		DescriptorCount: 1,
 	}
 	poolInfo := vk.DescriptorPoolCreateInfo{
 		SType:         vk.StructureTypeDescriptorPoolCreateInfo,
@@ -1181,7 +1190,7 @@ func (c *Core) createModelDescriptorSets() {
 	for i := 0; i < int(modelCount); i++ {
 		// ctxubo
 		ctxBufferInfo := vk.DescriptorBufferInfo{
-			Buffer: c.ctxUniformBuffer,
+			Buffer: c.ctxUniformBuffer[i],
 			Offset: 0,
 			Range:  model.SizeOfCtxUbo(),
 		}

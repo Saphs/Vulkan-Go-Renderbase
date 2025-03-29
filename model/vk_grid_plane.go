@@ -9,7 +9,7 @@ func NewGridPlane(name string) *Model {
 		{ // 12 + 12 + 8 = 32 Byte [0]
 			Pos:      vm.Vec3{X: -1, Y: -1, Z: 0}, // 12 Byte (float32 * 3, no padding)
 			Color:    vm.Vec3{X: 1, Y: 0, Z: 0},   // 12 Byte (float32 * 3, no padding)
-			TexCoord: vm.Vec2{X: 1, Y: 1},         // 8 Byte (float32 * 2, no padding)
+			TexCoord: vm.Vec2{X: 0, Y: 0},         // 8 Byte (float32 * 2, no padding)
 		},
 		{ // [1]
 			Pos:      vm.Vec3{X: -1, Y: 1, Z: 0},
@@ -19,7 +19,7 @@ func NewGridPlane(name string) *Model {
 		{ // [2]
 			Pos:      vm.Vec3{X: 1, Y: 1, Z: 0},
 			Color:    vm.Vec3{X: 0, Y: 0, Z: 1},
-			TexCoord: vm.Vec2{X: 0, Y: 0},
+			TexCoord: vm.Vec2{X: 1, Y: 1},
 		},
 		{ // [3]
 			Pos:      vm.Vec3{X: 1, Y: -1, Z: 0},

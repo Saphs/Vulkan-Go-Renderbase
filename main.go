@@ -7,6 +7,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 	vm "local/vector_math"
 	"log"
+	"math"
 	"os"
 	"runtime"
 	"time"
@@ -78,16 +79,21 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 	dtDraw = time.Now()
 	delta := dtDraw.Sub(drawLast)
 
-	m := vm.NewUnitMat(4)
 	mod2, err := c.FindInScene("Cube 2")
-	//mod1, err := c.FindInScene("Cube 1")
+	mod1, err := c.FindInScene("Cube 1")
 	if err != nil {
 		log.Println(err)
 	} else {
-		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(45), vm.Vec3{X: 1, Y: 1})
-		//mod1.Mesh.ModelMat = m
-		m, _ = m.Rotate(elapsed.Seconds()*vm.ToRad(20), vm.Vec3{X: 0.5, Y: 1})
-		mod2.Mesh.ModelMat = m
+		m1 := vm.NewUnitMat(4)
+		m1, _ = m1.Translate(vm.Vec3{X: 1, Y: 1, Z: -0.5})
+		m1, _ = m1.Scale(vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5})
+		m1, _ = m1.Rotate(elapsed.Seconds()*vm.ToRad(90), vm.Vec3{X: -0.5, Y: 1})
+		mod1.Mesh.ModelMat = m1
+
+		m2 := vm.NewUnitMat(4)
+		m2, _ = m2.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
+		m2, _ = m2.Rotate(math.Sin(elapsed.Seconds())*vm.ToRad(45), vm.Vec3{X: 0.5, Y: 1})
+		mod2.Mesh.ModelMat = m2
 	}
 
 	// Interactions with the world that should not happen each event, but each frame
