@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"math/rand/v2"
 	"strings"
 	"unsafe"
@@ -45,7 +44,7 @@ func (m *Mat) Add(b *Mat) (Mat, error) {
 func (m *Mat) Sub(b *Mat) (Mat, error) {
 	rowsA, colsA := (*m).Size()
 	rowsB, colsB := (*b).Size()
-	if rowsA == rowsB && colsA == colsB {
+	if rowsA != rowsB || colsA != colsB {
 		msg := fmt.Sprintf(
 			"can't add %dx%d matrix with %dx%d matrix, matracies not of equal size",
 			rowsA, colsA, rowsB, colsB,
@@ -117,7 +116,7 @@ func rng(min, max int) int {
 
 func (m *Mat) Rotate(rad float64, axis Vec3) (Mat, error) {
 	rm := NewRotation(rad, axis)
-	rm.Transpose()
+	rm = rm.Transpose()
 	res, err := m.Mult(&rm)
 	if err != nil {
 		return nil, err
@@ -180,7 +179,9 @@ func (m *Mat) ByteSize() int {
 func (m *Mat) Unroll() []float32 {
 	f := make([]float32, m.RowCnt()*m.ColCnt())
 	for i := range f {
-		f[i] = (*m)[int(math.Floor(float64(i/m.RowCnt())))][i%m.ColCnt()]
+		row := i % m.RowCnt()
+		col := i / m.RowCnt()
+		f[i] = (*m)[row][col]
 	}
 	return f
 }
