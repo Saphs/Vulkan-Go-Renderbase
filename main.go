@@ -4,13 +4,15 @@ import "C"
 import (
 	"GPU_fluid_simulation/model"
 	"GPU_fluid_simulation/renderer"
-	"github.com/veandco/go-sdl2/sdl"
+	"fmt"
 	vm "local/vector_math"
 	"log"
 	"math"
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/veandco/go-sdl2/sdl"
 )
 
 const MOV_UNITS_PER_SEC = 5
@@ -24,6 +26,9 @@ func init() {
 }
 
 var dtDraw = time.Now()
+var fpsIdx = 0
+var fpsAcc = [64]float64{}
+var fps = 0.0
 var currentlyPressed []sdl.Keycode
 
 func onIteration(event sdl.Event, c *renderer.Core) {
@@ -81,6 +86,7 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 
 	mod2, err := c.FindInScene("Cube 2")
 	mod1, err := c.FindInScene("Cube 1")
+	grid, err := c.FindInScene("Grid")
 	if err != nil {
 		log.Println(err)
 	} else {
@@ -94,6 +100,11 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 		m2, _ = m2.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
 		m2, _ = m2.Rotate(math.Sin(elapsed.Seconds())*vm.ToRad(45), vm.Vec3{X: 0.5, Y: 1})
 		mod2.Mesh.ModelMat = m2
+
+		mg := vm.NewUnitMat(4)
+		mg, _ = mg.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
+		//mg, _ = mg.Rotate(math.Sin(elapsed.Seconds())*vm.ToRad(45), vm.Vec3{X: 0.5, Y: 1})
+		grid.Mesh.ModelMat = mg
 	}
 
 	// Interactions with the world that should not happen each event, but each frame
@@ -122,6 +133,21 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 		}
 
 	}
+	c.Win.Win.SetTitle(fmt.Sprintf("%s - FPS:%8.2f", c.Win.Title, trackFps(delta)))
+}
+
+func trackFps(dt time.Duration) float64 {
+	fpsAcc[fpsIdx] = dt.Seconds()
+	fpsIdx += 1
+	if fpsIdx >= len(fpsAcc) {
+		sum := 0.0
+		for i := range fpsAcc {
+			sum += fpsAcc[i]
+		}
+		fps = 1 / (sum / float64(len(fpsAcc)))
+		fpsIdx = 0
+	}
+	return fps
 }
 
 func addPressedKey(key sdl.Keycode) {
@@ -153,6 +179,8 @@ func main() {
 	grid := model.NewGridPlane("Grid")
 
 	core := renderer.NewRenderCore()
+	defer core.Destroy()
+
 	core.DefaultCam()
 	core.AddToScene(grid)
 	core.AddToScene(myModel)
@@ -162,5 +190,4 @@ func main() {
 		onDraw,
 	)
 	core.ClearScene()
-	core.Destroy()
 }

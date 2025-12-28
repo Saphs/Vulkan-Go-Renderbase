@@ -2,9 +2,10 @@ package common
 
 import (
 	"fmt"
+	"log"
+
 	vk "github.com/goki/vulkan"
 	"github.com/veandco/go-sdl2/sdl"
-	"log"
 )
 
 const APPLICATION_NAME = "GPU fluid simulation"
@@ -24,6 +25,8 @@ type Window struct {
 	sdlVersion string
 	vkVersion  string
 
+	Title string
+
 	Win       *sdl.Window
 	Resized   bool
 	Minimized bool
@@ -40,6 +43,7 @@ func NewWindow(title string, w int32, h int32, validationLayers []string) *Windo
 	window := &Window{
 		sdlVersion: fmt.Sprintf("v%d.%d.%d", SDL_MAJOR, SDL_MINOR, SDL_PATCH),
 		vkVersion:  fmt.Sprintf("v%d.%d.%d", VK_SPEC_MAJOR, VK_SPEC_MINOR, VK_SPEC_PATCH),
+		Title:      title,
 		Resized:    false,
 		Minimized:  false,
 		Close:      false,

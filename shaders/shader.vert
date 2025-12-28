@@ -27,7 +27,8 @@ void main() {
     gl_Position = ubo.proj * ubo.view * pc.model * vec4(inPosition, 1.0);
     fragColor = inColor;
     vec2 tex = inTexColor;
-    if (ctx.modelType == 1) {
+    if (ctx.modelType == 0) {
+        //gl_Position = vec4(inPosition, 1.0);
         tex = vec2(0.0, 0.0);
     }
 

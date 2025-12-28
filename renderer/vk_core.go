@@ -4,13 +4,14 @@ import "C"
 import (
 	com "GPU_fluid_simulation/common"
 	"GPU_fluid_simulation/model"
-	vk "github.com/goki/vulkan"
-	"github.com/veandco/go-sdl2/sdl"
 	"log"
 	"math"
-	"neilpa.me/go-stbi"
 	"time"
 	"unsafe"
+
+	vk "github.com/goki/vulkan"
+	"github.com/veandco/go-sdl2/sdl"
+	"neilpa.me/go-stbi"
 )
 
 const PROGRAM_NAME = "GPU fluid simulation"
@@ -19,7 +20,7 @@ const MAX_FRAMES_IN_FLIGHT = 3
 
 type Core struct {
 	// OS/Window level
-	win    *com.Window
+	Win    *com.Window
 	device *com.Device
 
 	// Target level
@@ -76,11 +77,12 @@ func NewRenderCore() *Core {
 }
 
 func (c *Core) Initialize() {
-	c.win = com.NewWindow(PROGRAM_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, []string{
+	c.Win = com.NewWindow(PROGRAM_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, []string{
 		"VK_LAYER_KHRONOS_validation",
 	})
-	c.device = com.NewDevice(c.win)
-	c.swapChain = com.NewSwapChain(c.device, c.win)
+	c.device = com.NewDevice(c.Win)
+	c.swapChain = com.NewSwapChain(c.device, c.Win)
+
 	c.createRenderPass()
 	c.createDescriptorSetLayout()
 	c.createModelDescriptorSetLayout()
@@ -88,9 +90,11 @@ func (c *Core) Initialize() {
 	c.createCommandPool()
 	c.createDepthResources()
 	c.createFrameBuffers()
+
 	c.createTexture()
 	c.createTextureViews()
 	c.createTextureSampler()
+
 	c.createUniformBuffers()
 	c.createCtxUniformBuffers()
 	c.createDescriptorPool()
@@ -113,29 +117,29 @@ func (c *Core) Loop(ih iterationHandler, dh drawHandler) {
 	t0 := time.Now()
 	frames := 0
 	var event sdl.Event
-	c.win.Close = false
-	for !c.win.Close {
+	c.Win.Close = false
+	for !c.Win.Close {
 		for event = sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			// Doing some basic functionality for basic window handling
 			switch ev := event.(type) {
 			case *sdl.QuitEvent:
-				c.win.Close = true
+				c.Win.Close = true
 			case *sdl.WindowEvent:
 				if ev.Event == sdl.WINDOWEVENT_RESIZED {
-					c.win.Resized = true
+					c.Win.Resized = true
 				} else if ev.Event == sdl.WINDOWEVENT_MINIMIZED {
-					c.win.Minimized = true
+					c.Win.Minimized = true
 				} else if ev.Event == sdl.WINDOWEVENT_RESTORED {
-					c.win.Minimized = false
+					c.Win.Minimized = false
 				}
 			case *sdl.KeyboardEvent:
 				if ev.Keysym.Sym == sdl.K_ESCAPE {
-					c.win.Close = true
+					c.Win.Close = true
 				}
 			}
 			ih(event, c)
 		}
-		if !c.win.Minimized {
+		if !c.Win.Minimized {
 			dh(time.Since(t0), c)
 			c.drawFrame()
 			frames++
@@ -197,7 +201,7 @@ func (c *Core) Destroy() {
 	vk.DestroyRenderPass(c.device.D, c.renderPass, nil)
 
 	c.device.Destroy()
-	c.win.Destroy()
+	c.Win.Destroy()
 }
 
 func (c *Core) destroySwapChainAndDerivatives() {
@@ -367,9 +371,9 @@ func (c *Core) createGraphicsPipeline() {
 		AlphaToOneEnable:      vk.False,
 	}
 	colorBlendAttachmentInfo := vk.PipelineColorBlendAttachmentState{
-		BlendEnable:         vk.False,
-		SrcColorBlendFactor: vk.BlendFactorOne,
-		DstColorBlendFactor: vk.BlendFactorZero,
+		BlendEnable:         vk.True,
+		SrcColorBlendFactor: vk.BlendFactorSrcAlpha,
+		DstColorBlendFactor: vk.BlendFactorOneMinusSrcAlpha,
 		ColorBlendOp:        vk.BlendOpAdd,
 		SrcAlphaBlendFactor: vk.BlendFactorOne,
 		DstAlphaBlendFactor: vk.BlendFactorZero,
@@ -517,6 +521,7 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 		vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit),
 		vk.MemoryPropertyFlags(vk.MemoryPropertyHostVisibleBit|vk.MemoryPropertyHostCoherentBit),
 	)
+	defer com.DestroyBuffer(c.device, stgBuf)
 
 	// Copy our vertex data into staging (device) memory
 	com.CopyToDeviceBuffer(c.device, stgBuf, m.GetVBufferBytes())
@@ -533,10 +538,8 @@ func (c *Core) allocateVBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 		m.Name, &vertBuf.Handle, &vertBuf.DeviceMem, bufSize,
 	)
 
-	// Move memory to vertex buffer & delete staging buffer afterwards
+	// Move memory to vertex buffer
 	c.copyBuffer(stgBuf, vertBuf, bufSize)
-	com.DestroyBuffer(c.device, stgBuf)
-
 	return vertBuf.Handle, vertBuf.DeviceMem
 }
 
@@ -567,26 +570,6 @@ func (c *Core) allocateIdxBuffer(m *model.Model) (vk.Buffer, vk.DeviceMemory) {
 	vk.FreeMemory(c.device.D, stgBuf.DeviceMem, nil)
 
 	return idxBuf.Handle, idxBuf.DeviceMem
-}
-
-func (c *Core) copyBuffer(src *com.Buffer, dst *com.Buffer, s vk.DeviceSize) {
-	c.copyVkBuffer(src.Handle, dst.Handle, s)
-}
-
-// copyVkBuffer is a subroutine that prepares a command buffer that is then executed on the device.
-// The command buffer is allocated, records the copy command and is submitted to the device. After idle
-// the command buffer is freed.
-func (c *Core) copyVkBuffer(src vk.Buffer, dst vk.Buffer, s vk.DeviceSize) {
-	cmdBuf := c.beginSingleTimeCommands()
-	copyRegions := []vk.BufferCopy{
-		{
-			SrcOffset: 0,
-			DstOffset: 0,
-			Size:      s,
-		},
-	}
-	vk.CmdCopyBuffer(cmdBuf, src, dst, 1, copyRegions)
-	c.endSingleTimeCommands(cmdBuf)
 }
 
 func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.ImageLayout, new vk.ImageLayout) {
@@ -651,7 +634,7 @@ func (c *Core) transitionImageLayout(img vk.Image, format vk.Format, old vk.Imag
 		1, []vk.ImageMemoryBarrier{barrier},
 	)
 
-	c.endSingleTimeCommands(cmdBuf)
+	c.endSingleTimeCommands(cmdBuf, c.device.GraphicsQ)
 }
 
 func (c *Core) copyBufferToImage(buffer vk.Buffer, img vk.Image, w uint32, h uint32) {
@@ -678,22 +661,7 @@ func (c *Core) copyBufferToImage(buffer vk.Buffer, img vk.Image, w uint32, h uin
 		},
 	}
 	vk.CmdCopyBufferToImage(cmdBuf, buffer, img, vk.ImageLayoutTransferDstOptimal, 1, []vk.BufferImageCopy{region})
-	c.endSingleTimeCommands(cmdBuf)
-}
-
-func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
-	cmdBuffer, err := com.VKBeginSingleTimeCommands(c.device.D, c.commandPool)
-	if err != nil {
-		log.Panicf("Failed to create command buffer for single time use: %v", err)
-	}
-	return cmdBuffer
-}
-
-func (c *Core) endSingleTimeCommands(cmdBuf vk.CommandBuffer) {
-	err := com.VKEndSingleTimeCommands(c.device.D, c.commandPool, c.device.GraphicsQ, cmdBuf)
-	if err != nil {
-		log.Panicf("Failed to end single time use command buffer: %v", err)
-	}
+	c.endSingleTimeCommands(cmdBuf, c.device.GraphicsQ)
 }
 
 func (c *Core) createTexture() {
@@ -820,7 +788,7 @@ func (c *Core) findSupportedFormat(candidates []vk.Format, tiling vk.ImageTiling
 
 // Drawing and derivative functionality
 
-func (c *Core) recordCommandBuffer(buffer vk.CommandBuffer, imageIdx uint32) {
+func (c *Core) recordDrawCommands(buffer vk.CommandBuffer, imageIdx uint32) {
 	// Begin recording
 	beginInfo := vk.CommandBufferBeginInfo{
 		SType:            vk.StructureTypeCommandBufferBeginInfo,
@@ -909,7 +877,7 @@ func (c *Core) drawFrame() {
 	vk.ResetFences(c.device.D, 1, []vk.Fence{c.inFlightFens[c.currentFrameIdx]})
 
 	vk.ResetCommandBuffer(c.commandBuffers[c.currentFrameIdx], 0)
-	c.recordCommandBuffer(c.commandBuffers[c.currentFrameIdx], imgIdx)
+	c.recordDrawCommands(c.commandBuffers[c.currentFrameIdx], imgIdx)
 
 	c.updateUniformBuffer(c.currentFrameIdx)
 
@@ -942,8 +910,8 @@ func (c *Core) drawFrame() {
 	}
 	result = vk.QueuePresent(c.device.PresentQ, &presentInfo)
 	// React on surface changes and other possible causes for failure (e.g.: Window resizing)
-	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.win.Resized {
-		c.win.Resized = false
+	if result == vk.ErrorOutOfDate || result == vk.Suboptimal || c.Win.Resized {
+		c.Win.Resized = false
 		c.recreateSwapChain()
 	} else if result != vk.Success {
 		log.Panicf("Failed to present image, QueuePresent(...) result code: %d", result)
@@ -955,7 +923,7 @@ func (c *Core) drawFrame() {
 func (c *Core) recreateSwapChain() {
 	vk.DeviceWaitIdle(c.device.D)
 	c.destroySwapChainAndDerivatives()
-	c.swapChain = com.NewSwapChain(c.device, c.win)
+	c.swapChain = com.NewSwapChain(c.device, c.Win)
 	c.createDepthResources()
 	c.createFrameBuffers()
 }
@@ -1110,20 +1078,9 @@ func (c *Core) createModelDescriptorPool() {
 }
 
 func (c *Core) createDescriptorSets() {
+
 	layouts := []vk.DescriptorSetLayout{c.descriptorSetLayout, c.descriptorSetLayout, c.descriptorSetLayout}
-	allocInfo := vk.DescriptorSetAllocateInfo{
-		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
-		PNext:              nil,
-		DescriptorPool:     c.descriptorPool,
-		DescriptorSetCount: MAX_FRAMES_IN_FLIGHT,
-		PSetLayouts:        layouts,
-	}
-	sets := make([]vk.DescriptorSet, MAX_FRAMES_IN_FLIGHT)
-	if vk.AllocateDescriptorSets(c.device.D, &allocInfo, &(sets[0])) != vk.Success {
-		log.Panicf("Failed to allocate descriptor set")
-	}
-	log.Printf("%v", sets)
-	c.descriptorSets = sets
+	c.descriptorSets = c.allocDescriptorSets(c.descriptorPool, layouts)
 
 	for i := 0; i < MAX_FRAMES_IN_FLIGHT; i++ {
 		// ubo
@@ -1152,11 +1109,14 @@ func (c *Core) createDescriptorSets() {
 			ImageLayout: vk.ImageLayoutShaderReadOnlyOptimal,
 		}
 		texSamplerDescriptorWrite := vk.WriteDescriptorSet{
-			SType:            vk.StructureTypeWriteDescriptorSet,
-			PNext:            nil,
-			DstSet:           c.descriptorSets[i],
-			DstBinding:       1,
-			DstArrayElement:  0,
+			SType:           vk.StructureTypeWriteDescriptorSet,
+			PNext:           nil,
+			DstSet:          c.descriptorSets[i],
+			DstBinding:      1, // <-- shader binding location, corresponds to 'layout(binding = 1) uniform sampler2D texSampler;'
+			DstArrayElement: 0, // <-- when binding a single texture, this will just be 0 for now. Its the starting index in the binding.
+			// assuming I would push 4 texture samplers I could select where they are placed in the array of the binding
+			// e.g.: 'layout(binding = 1) uniform sampler2D texSampler[4];' -> pushing 2 samplers and setting it to 2
+			// would fill index 2 and 3
 			DescriptorCount:  1,
 			DescriptorType:   vk.DescriptorTypeCombinedImageSampler,
 			PImageInfo:       []vk.DescriptorImageInfo{texSampler},

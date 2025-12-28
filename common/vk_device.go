@@ -1,8 +1,9 @@
 package common
 
 import (
-	vk "github.com/goki/vulkan"
 	"log"
+
+	vk "github.com/goki/vulkan"
 )
 
 const ENABLE_VALIDATION = true
@@ -60,7 +61,7 @@ func (dc *Device) selectPhysicalDevice(in *vk.Instance, su *vk.Surface) {
 	if pd == nil {
 		log.Panicf("No suitable physical device (GPU) found")
 	}
-	log.Printf("Found suitable device: \"%s\"")
+	log.Printf("Found suitable device")
 	dc.PD = pd
 
 	// Also set related member variables for dc.physicalDevice as they are needed later
@@ -80,7 +81,7 @@ func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 	pdFeatures := ReadPhysicalDeviceFeatures(pd)
 	pdQueueFams := ReadQueueFamilies(pd)
 
-	log.Printf("Physical divece\n%s", ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
+	log.Printf("Physical device\n%s", ToStringPhysicalDeviceTable(pdProps, pdFeatures, pdQueueFams))
 
 	indices, err := findQueueFamilies(pd, *su)
 	if err != nil {
@@ -98,7 +99,11 @@ func isDeviceSuitable(pd vk.PhysicalDevice, su *vk.Surface) bool {
 		isSwapChainAdequate = checkSwapChainAdequacy(pd, *su)
 	}
 
-	return isDiscreteGPU && featuresSupported && queuesSupported && extensionsSupported && isSwapChainAdequate
+	isSuitable := isDiscreteGPU && featuresSupported && queuesSupported && extensionsSupported && isSwapChainAdequate
+	if isSuitable {
+		log.Printf("Physical device: '%v' is suitable", vk.ToString(pdProps.DeviceName[:]))
+	}
+	return isSuitable
 }
 
 func (dc *Device) createLogicalDevice() {
