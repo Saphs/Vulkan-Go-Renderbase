@@ -11,24 +11,6 @@ import (
 // defaults where possible. These differ from the VKS function in vk_simplifications.go by being tied to a given
 // Core Struct and are closer to helper function in the class than being a general abstraction of the API.
 
-// allocDescriptorSets Allocates a list of descriptor sets of given layout from the stated pool
-func (c *Core) allocDescriptorSets(pool vk.DescriptorPool, layouts []vk.DescriptorSetLayout) []vk.DescriptorSet {
-	cnt := uint32(len(layouts))
-	allocInfo := vk.DescriptorSetAllocateInfo{
-		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
-		PNext:              nil,
-		DescriptorPool:     pool,
-		DescriptorSetCount: cnt,
-		PSetLayouts:        layouts,
-	}
-	sets := make([]vk.DescriptorSet, cnt)
-	err := vk.Error(vk.AllocateDescriptorSets(c.device.D, &allocInfo, &(sets[0])))
-	if err != nil {
-		log.Panicf("Failed to allocate descriptor sets")
-	}
-	return sets
-}
-
 func (c *Core) beginSingleTimeCommands() vk.CommandBuffer {
 	cmdBuffer, err := com.VKBeginSingleTimeCommands(c.device.D, c.commandPool)
 	if err != nil {
