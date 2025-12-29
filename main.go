@@ -4,6 +4,7 @@ import "C"
 import (
 	"GPU_fluid_simulation/model"
 	"GPU_fluid_simulation/renderer"
+	"GPU_fluid_simulation/stl"
 	"fmt"
 	vm "local/vector_math"
 	"log"
@@ -86,25 +87,11 @@ func onDraw(elapsed time.Duration, c *renderer.Core) {
 
 	mod2, err := c.FindInScene("Cube 2")
 	mod1, err := c.FindInScene("Cube 1")
-	grid, err := c.FindInScene("Grid")
 	if err != nil {
 		log.Println(err)
 	} else {
-		m1 := vm.NewUnitMat(4)
-		m1, _ = m1.Translate(vm.Vec3{X: 1, Y: 1, Z: -0.5})
-		m1, _ = m1.Scale(vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5})
-		m1, _ = m1.Rotate(elapsed.Seconds()*vm.ToRad(90), vm.Vec3{X: -0.5, Y: 1})
-		mod1.Mesh.ModelMat = m1
-
-		m2 := vm.NewUnitMat(4)
-		m2, _ = m2.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
-		m2, _ = m2.Rotate(math.Sin(elapsed.Seconds())*vm.ToRad(45), vm.Vec3{X: 0.5, Y: 1})
-		mod2.Mesh.ModelMat = m2
-
-		mg := vm.NewUnitMat(4)
-		mg, _ = mg.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
-		//mg, _ = mg.Rotate(math.Sin(elapsed.Seconds())*vm.ToRad(45), vm.Vec3{X: 0.5, Y: 1})
-		grid.Mesh.ModelMat = mg
+		mod1.Rotate(1*0.01, vm.Vec3{X: -0.5, Y: 1})
+		mod2.Rotate(math.Sin(elapsed.Seconds())*45*0.01, vm.Vec3{X: 0.5, Y: 1})
 	}
 
 	// Interactions with the world that should not happen each event, but each frame
@@ -174,14 +161,25 @@ func removePressedKey(key sdl.Keycode) {
 }
 
 func main() {
+	dragon := stl.ReadStlFile("C:\\Users\\tizia\\GolandProjects\\GPU_fluid_simulation\\stl\\tree01.stl")
+	dragonModel := model.NewModel(dragon, "Dragon")
+	dragonModel.Rotate(-90, vm.Vec3{X: 1, Y: 0})
+
 	myModel := model.NewCubeModel("Cube 1")
+	myModel.Translate(vm.Vec3{X: 1, Y: 1, Z: -0.5})
+	myModel.Scale(vm.Vec3{X: 0.5, Y: 0.5, Z: 0.5})
+
 	myModel2 := model.NewCubeModel("Cube 2")
+	myModel2.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
+
 	grid := model.NewGridPlane("Grid")
+	grid.Translate(vm.Vec3{X: -1, Y: 1, Z: -0.5})
 
 	core := renderer.NewRenderCore()
 	defer core.Destroy()
 
 	core.DefaultCam()
+	core.AddToScene(dragonModel)
 	core.AddToScene(grid)
 	core.AddToScene(myModel)
 	core.AddToScene(myModel2)

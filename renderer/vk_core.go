@@ -174,7 +174,7 @@ func (c *Core) Destroy() {
 		vk.FreeMemory(c.device.D, c.uniformBufferMems[i], nil)
 	}
 	// context ubo
-	modelCount := 3
+	modelCount := 4
 	for i := 0; i < modelCount; i++ {
 		vk.DestroyBuffer(c.device.D, c.ctxUniformBuffer[i], nil)
 		vk.FreeMemory(c.device.D, c.ctxUniformBufferMem[i], nil)
@@ -371,7 +371,7 @@ func (c *Core) createGraphicsPipeline() {
 		AlphaToOneEnable:      vk.False,
 	}
 	colorBlendAttachmentInfo := vk.PipelineColorBlendAttachmentState{
-		BlendEnable:         vk.True,
+		BlendEnable:         vk.False,
 		SrcColorBlendFactor: vk.BlendFactorSrcAlpha,
 		DstColorBlendFactor: vk.BlendFactorOneMinusSrcAlpha,
 		ColorBlendOp:        vk.BlendOpAdd,
@@ -1003,7 +1003,7 @@ func (c *Core) createUniformBuffers() {
 
 func (c *Core) createCtxUniformBuffers() {
 
-	modelCount := 3
+	modelCount := 4
 	c.ctxUniformBuffer = make([]vk.Buffer, modelCount)
 	c.ctxUniformBufferMem = make([]vk.DeviceMemory, modelCount)
 	c.ctxUniformBuffersMapped = make([]unsafe.Pointer, modelCount)
@@ -1057,7 +1057,7 @@ func (c *Core) createDescriptorPool() {
 
 func (c *Core) createModelDescriptorPool() {
 	// this should be dynamic somehow
-	modelCount := uint32(3)
+	modelCount := uint32(4)
 	uboPoolSize := vk.DescriptorPoolSize{
 		Type:            vk.DescriptorTypeUniformBuffer,
 		DescriptorCount: 1,
@@ -1130,8 +1130,8 @@ func (c *Core) createDescriptorSets() {
 
 func (c *Core) createModelDescriptorSets() {
 	// this holds descriptor sets for 3 models, this needs to be dynamic somehow
-	modelCount := uint32(3)
-	layouts := []vk.DescriptorSetLayout{c.modelDescriptorSetLayout, c.modelDescriptorSetLayout, c.modelDescriptorSetLayout}
+	modelCount := uint32(4)
+	layouts := []vk.DescriptorSetLayout{c.modelDescriptorSetLayout, c.modelDescriptorSetLayout, c.modelDescriptorSetLayout, c.modelDescriptorSetLayout}
 	allocInfo := vk.DescriptorSetAllocateInfo{
 		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
 		PNext:              nil,

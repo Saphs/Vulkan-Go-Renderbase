@@ -2,9 +2,10 @@ package model
 
 import (
 	"GPU_fluid_simulation/common"
-	vk "github.com/goki/vulkan"
 	vm "local/vector_math"
 	"unsafe"
+
+	vk "github.com/goki/vulkan"
 )
 
 type Model struct {
@@ -22,6 +23,27 @@ func NewModel(m *Mesh, n string) *Model {
 		Mesh: m,
 	}
 }
+
+// 3D Space
+// ----------------------------------------------------------------------------------------------------------
+
+func (m *Model) Rotate(deg float64, axis vm.Vec3) {
+	rot, _ := m.Mesh.ModelMat.Rotate(vm.ToRad(deg), axis)
+	m.Mesh.ModelMat = rot
+}
+
+func (m *Model) Translate(move vm.Vec3) {
+	mov, _ := m.Mesh.ModelMat.Translate(move)
+	m.Mesh.ModelMat = mov
+}
+
+func (m *Model) Scale(factors vm.Vec3) {
+	scl, _ := m.Mesh.ModelMat.Scale(factors)
+	m.Mesh.ModelMat = scl
+}
+
+// GPU memory info
+// ----------------------------------------------------------------------------------------------------------
 
 // ModelPushConstantsSize reports the memory size required for all push constants that the Model expects to
 // get bound. The actual layout for the constants in memory is decided by the render pipeline. For now only
